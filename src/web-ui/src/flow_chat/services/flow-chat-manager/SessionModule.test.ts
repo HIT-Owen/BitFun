@@ -1471,4 +1471,44 @@ describe('SessionModule historical session coordination', () => {
       })
     );
   });
+
+  it('transitions a new local session to ready after ensureBackendSession succeeds', async () => {
+    const { context } = createContext(createSession({
+      isHistorical: false,
+      historyState: 'new',
+      dialogTurns: [],
+    }));
+    agentApiMocks.ensureCoordinatorSession.mockResolvedValueOnce(undefined);
+
+    await ensureBackendSession(context, 'history-1');
+
+    expect(agentApiMocks.ensureCoordinatorSession).toHaveBeenCalledTimes(1);
+    expect(agentApiMocks.createSession).not.toHaveBeenCalled();
+    expect(context.flowChatStore.getState().sessions.get('history-1')).toMatchObject({
+      historyState: 'ready',
+      isHistorical: false,
+      contextRestoreState: 'ready',
+    });
+  });
+
+  it('self-heals a stuck new active session with renderable content when switching back', async () => {
+    const session = createSession({
+      isHistorical: false,
+      historyState: 'new',
+      dialogTurns: [{
+        id: 'turn-1',
+        userMessage: { id: 'user-1', content: 'hello', timestamp: 1 },
+        modelRounds: [],
+      } as any],
+    });
+    const { context, flowChatStore } = createContext(session, {
+      activeSessionId: null,
+    });
+    persistenceMocks.touchSessionActivity.mockResolvedValueOnce(undefined);
+
+    await switchChatSession(context, 'history-1');
+
+    expect(flowChatStore.switchSession).toHaveBeenCalledWith('history-1');
+    expect(context.flowChatStore.getState().sessions.get('history-1')?.historyState).toBe('ready');
+  });
 });

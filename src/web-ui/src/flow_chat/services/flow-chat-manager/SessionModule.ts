@@ -738,6 +738,34 @@ export async function switchChatSession(
       touchActiveSessionInBackground();
     }
 
+    // Self-heal: a locally created session may have its historyState stuck at
+    // 'new' (e.g. from a build without the markBackendContextReady fix).  When
+    // switching back to it and it already has renderable content, transition it
+    // to 'ready' so rollback/edit are not blocked by the frontend guard.
+    if (!shouldHydrateBeforeSwitch && !isRemoteSession) {
+      const currentSession = context.flowChatStore.getState().sessions.get(sessionId);
+      if (
+        currentSession &&
+        !currentSession.isHistorical &&
+        !currentSession.isTransient &&
+        driverForSession(sessionId, currentSession).id !== 'dispatch' &&
+        currentSession.historyState === 'new' &&
+        hasRenderableSessionContent(currentSession)
+      ) {
+        context.flowChatStore.setState(prev => {
+          const newSessions = new Map(prev.sessions);
+          const sess = newSessions.get(sessionId);
+          if (sess && sess.historyState === 'new') {
+            newSessions.set(sessionId, {
+              ...sess,
+              historyState: 'ready',
+            });
+          }
+          return { ...prev, sessions: newSessions };
+        });
+      }
+    }
+
     if (session?.isHistorical && !shouldHydrateBeforeSwitch) {
       // Load history in the background — do not block the UI.
       recordHistorySessionDiagnosticEvent(sessionId, 'switch_background_hydrate_started', {
@@ -987,7 +1015,7 @@ export async function ensureBackendSession(
     !(isHistoricalSession && hasProjectedTurns);
 
   const markBackendContextReady = () => {
-    if (!isHistoricalSession && !requiresContextRestore) return;
+    if (!isHistoricalSession && !requiresContextRestore && latestSession.historyState !== 'new') return;
     context.flowChatStore.setState(prev => {
       const newSessions = new Map(prev.sessions);
       const sess = newSessions.get(sessionId);
