@@ -74,6 +74,15 @@ commands, use the nearest local guide. The full script registry remains in
 
 ## Global rules
 
+### Git workflow
+
+- Track every bug fix and feature optimization in Git. Do not leave code changes
+  uncommitted in the working tree.
+- Do all work on a dedicated `dev` branch. Never commit directly to `main`.
+  After a change is verified working, merge `dev` back into `main`.
+- This repository is built and used locally only. Do not push to any remote and
+  do not pull from any remote.
+
 ### Process artifacts
 
 - Do not add or update files under `docs/superpowers/**`. Keep temporary
