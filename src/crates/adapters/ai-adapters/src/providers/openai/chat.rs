@@ -19,7 +19,17 @@ pub(crate) fn try_build_request_body(
     let mut request_body = serde_json::json!({
         "model": client.config.model,
         "messages": openai_messages,
-        "stream": true
+        "stream": true,
+        // Request streaming usage so local OpenAI-compatible servers (vLLM,
+        // llama.cpp, SGLang) report token counts. Without `include_usage` these
+        // servers omit the usage block on the final chunk, so local models would
+        // never show up in usage stats (`stream_result.usage` stays None and no
+        // TokenUsageUpdated event fires). All mainstream OpenAI-compatible
+        // providers accept this standard option; experimental verify:
+        // http://127.0.0.1:8002/v1 (qwen3.8-27b) and
+        // http://127.0.0.1:8001/v1 (deepseek-ai/DeepSeek-V4-Pro-0813) both
+        // return a `usage` block on the last chunk when it is set.
+        "stream_options": { "include_usage": true }
     });
 
     let model_name = client.config.model.to_lowercase();

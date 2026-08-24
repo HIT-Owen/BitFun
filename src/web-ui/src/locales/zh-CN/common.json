@@ -1275,6 +1275,7 @@
     "tokens": "Token",
     "unknownProvider": "未知供应商",
     "unknownEndpoint": "未知端点",
+    "deletedEndpoint": "配置已删除",
     "deletedConfig": "已删除配置",
     "empty": "暂无模型调用记录，与模型对话后将在此显示调用统计。",
     "error": "加载调用统计失败"

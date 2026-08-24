@@ -30,9 +30,9 @@ const PALETTE = [
 ];
 
 const TREND_COLORS = {
-  input: 'var(--bf-appearance-token-color-accent-500)',
+  input: 'var(--bf-appearance-token-color-info)',
   output: 'var(--bf-appearance-token-color-success)',
-  cacheHitRate: 'var(--bf-appearance-token-color-warning)',
+  cacheHitRate: 'var(--bf-appearance-token-color-error)',
 };
 
 const RANGES: { value: UsageStatsRange; labelKey: string }[] = [
@@ -52,6 +52,7 @@ interface ModelAgg {
   color: string;
   provider: string;
   endpoint: string;
+  configDeleted: boolean;
   requests: number;
   input: number;
   output: number;
@@ -148,6 +149,7 @@ const UsageStatsScene: React.FC = () => {
               : m.model_config_id
                 ? t('usageStats.deletedConfig')
                 : t('usageStats.unknownProvider'),
+            configDeleted: !cfg && !!m.model_config_id,
             endpoint: cfg ? endpointHost(cfg.request_url || cfg.base_url) : '',
             requests: 0,
             input: 0,
@@ -198,7 +200,9 @@ const UsageStatsScene: React.FC = () => {
   const endpoints = useMemo<GroupAgg[]>(() => {
     const byKey = new Map<string, GroupAgg>();
     for (const m of models) {
-      const key = m.endpoint || t('usageStats.unknownEndpoint');
+      const key =
+        m.endpoint ||
+        (m.configDeleted ? t('usageStats.deletedEndpoint') : t('usageStats.unknownEndpoint'));
       let agg = byKey.get(key);
       if (!agg) {
         agg = { key, label: key, requests: 0, tokens: 0, cached: 0, cacheReportedInput: 0 };
@@ -321,7 +325,7 @@ const UsageStatsScene: React.FC = () => {
               centerValue={compactTokens(totals!.tokens, formatNumber)}
               centerLabel={t('usageStats.tokens')}
               segments={filteredModels.map((m) => ({
-                label: m.modelName,
+                label: m.provider ? `${m.provider} · ${m.modelName}` : m.modelName,
                 value: m.input + m.output,
                 color: m.color,
                 sub: m.provider,
@@ -556,8 +560,13 @@ const TrendChart: React.FC<{ days: ModelUsageStatsResponse['days'] }> = ({ days 
   // Token axis is log-scaled (base 10, with a +1 offset so 0 maps to the floor)
   // so input and output that differ by orders of magnitude both stay visible.
   const yForToken = (v: number): number => padTop + plotH - (Math.log10(v + 1) / logMax) * plotH;
-  // Cache hit rate uses a separate linear 0-100% axis on the right.
-  const yForRate = (v: number): number => padTop + plotH - Math.max(0, Math.min(1, v)) * plotH;
+  // Cache hit rate uses a separate linear axis on the right, pinned to a
+  // 50-100% window since hit rates are typically well above 50%; a full
+  // 0-100% axis would compress the meaningful variation.
+  const yForRate = (v: number): number => {
+    const clamped = Math.max(0.5, Math.min(1.0, v));
+    return padTop + plotH - ((clamped - 0.5) / 0.5) * plotH;
+  };
 
   const tokenGrid = useMemo(() => {
     const vals: number[] = [0];
@@ -622,7 +631,7 @@ const TrendChart: React.FC<{ days: ModelUsageStatsResponse['days'] }> = ({ days 
               {compactTokens(g, formatNumber)}
             </text>
           ))}
-          {[0, 0.5, 1].map((f) => (
+          {[0.5, 0.75, 1].map((f) => (
             <text
               key={`rt-${f}`}
               x={width - padRight + 6}
@@ -636,7 +645,13 @@ const TrendChart: React.FC<{ days: ModelUsageStatsResponse['days'] }> = ({ days 
           <polyline points={polyline(series.input, yForToken)} fill="none" stroke={TREND_COLORS.input} strokeWidth="1.5" />
           <polyline points={polyline(series.output, yForToken)} fill="none" stroke={TREND_COLORS.output} strokeWidth="1.5" />
           {hitRatePoints && (
-            <polyline points={hitRatePoints} fill="none" stroke={TREND_COLORS.cacheHitRate} strokeWidth="1.5" />
+            <polyline
+              points={hitRatePoints}
+              fill="none"
+              stroke={TREND_COLORS.cacheHitRate}
+              strokeWidth="1.5"
+              strokeDasharray="5 4"
+            />
           )}
           {showMarkers &&
             series.input.map((v, i) => (

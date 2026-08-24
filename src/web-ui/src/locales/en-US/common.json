@@ -1275,6 +1275,7 @@
     "tokens": "tokens",
     "unknownProvider": "Unknown provider",
     "unknownEndpoint": "Unknown endpoint",
+    "deletedEndpoint": "Deleted config",
     "deletedConfig": "Deleted config",
     "empty": "No model call records yet. Usage statistics will appear here after you chat with a model.",
     "error": "Failed to load usage statistics"
