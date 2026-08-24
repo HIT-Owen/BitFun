@@ -24,6 +24,28 @@ fn token_usage_record_preserves_model_identity_and_cached_availability_default()
 }
 
 #[test]
+fn token_usage_record_tolerates_legacy_model_id_shape() {
+    // Records written before `model_config_id` / `effective_model_name` existed
+    // stored the provider model name under `model_id`. They must still
+    // deserialize (upgrade compatibility) instead of dropping the day file.
+    let record: TokenUsageRecord = serde_json::from_value(serde_json::json!({
+        "model_id": "deepseek-v4-pro",
+        "session_id": "session-1",
+        "turn_id": "turn-1",
+        "timestamp": Utc::now(),
+        "input_tokens": 100,
+        "output_tokens": 5,
+        "cached_tokens": 0,
+        "cached_tokens_available": true,
+        "total_tokens": 105
+    }))
+    .expect("legacy token usage record should deserialize");
+
+    assert_eq!(record.model_config_id, "");
+    assert_eq!(record.effective_model_name, "deepseek-v4-pro");
+}
+
+#[test]
 fn token_usage_query_preserves_include_subagent_default() {
     let query = TokenUsageQuery {
         model_id: None,

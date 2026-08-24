@@ -1243,6 +1243,8 @@
     "title": "调用统计",
     "subtitle": "当前设备本地保存的历史模型调用统计，不跨设备合并或同步；包含按模型、供应商和端点统计的请求数、Token 用量与缓存命中率。",
     "rangeLabel": "统计范围",
+    "rangeToday": "今天",
+    "rangeYesterday": "昨天",
     "rangeLast7d": "近 7 天",
     "rangeLast30d": "近 30 天",
     "rangeThisMonth": "本月",

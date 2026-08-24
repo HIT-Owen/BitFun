@@ -3,6 +3,8 @@ import { invoke } from '@tauri-apps/api/core';
 // ============ Types (strict 1:1 mirror of Rust types) ============
 
 export type UsageStatsRange =
+  | 'today'
+  | 'yesterday'
   | 'last7d'
   | 'last30d'
   | 'this_month'
@@ -11,6 +13,7 @@ export type UsageStatsRange =
   | 'all';
 
 export interface UsageStatsDayModel {
+  model_key: string;
   model_config_id: string;
   model_name: string;
   requests: number;

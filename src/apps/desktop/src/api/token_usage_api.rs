@@ -5,7 +5,7 @@
 //! read-only and device-local: it is never merged or synced across devices.
 
 use crate::api::app_state::AppState;
-use bitfun_core::service::token_usage::{TimeRange, TokenUsageQuery};
+use bitfun_core::service::token_usage::{TimeRange, TokenUsageQuery, TokenUsageRecord};
 use chrono::{DateTime, Datelike, Duration, Months, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -15,6 +15,8 @@ use tauri::State;
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UsageStatsRange {
+    Today,
+    Yesterday,
     Last7d,
     Last30d,
     ThisMonth,
@@ -53,6 +55,9 @@ pub struct UsageStatsDay {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct UsageStatsDayModel {
+    /// Stable cross-day grouping key: the config id when present, otherwise a
+    /// namespaced provider model name for legacy records.
+    pub model_key: String,
     pub model_config_id: String,
     pub model_name: String,
     pub requests: u64,
@@ -76,6 +81,7 @@ struct DayAgg {
 
 #[derive(Default)]
 struct ModelAgg {
+    model_config_id: String,
     model_name: String,
     requests: u64,
     input: u64,
@@ -141,13 +147,12 @@ pub async fn get_model_usage_stats(
             day.cache_reported_input += record.input_tokens as u64;
         }
 
-        let model = day
-            .models
-            .entry(record.model_config_id.clone())
-            .or_insert_with(|| ModelAgg {
-                model_name: record.effective_model_name.clone(),
-                ..Default::default()
-            });
+        let model_key = model_key_for(&record);
+        let model = day.models.entry(model_key).or_insert_with(|| ModelAgg {
+            model_config_id: record.model_config_id.clone(),
+            model_name: record.effective_model_name.clone(),
+            ..Default::default()
+        });
         model.requests += 1;
         model.input += record.input_tokens as u64;
         model.output += record.output_tokens as u64;
@@ -171,8 +176,9 @@ pub async fn get_model_usage_stats(
             models: day
                 .models
                 .into_iter()
-                .map(|(model_config_id, m)| UsageStatsDayModel {
-                    model_config_id,
+                .map(|(model_key, m)| UsageStatsDayModel {
+                    model_key,
+                    model_config_id: m.model_config_id,
                     model_name: m.model_name,
                     requests: m.requests,
                     input: m.input,
@@ -196,9 +202,25 @@ pub async fn get_model_usage_stats(
     })
 }
 
+fn model_key_for(record: &TokenUsageRecord) -> String {
+    if record.model_config_id.is_empty() {
+        format!("m:{}", record.effective_model_name)
+    } else {
+        record.model_config_id.clone()
+    }
+}
+
 fn resolve_range(range: &UsageStatsRange) -> (DateTime<Utc>, DateTime<Utc>) {
     let now = Utc::now();
     match range {
+        UsageStatsRange::Today => (to_utc_midnight(now.date_naive()), now),
+        UsageStatsRange::Yesterday => {
+            let today_start = to_utc_midnight(now.date_naive());
+            (
+                to_utc_midnight(now.date_naive() - Duration::days(1)),
+                today_start,
+            )
+        }
         UsageStatsRange::Last7d => (now - Duration::days(7), now),
         UsageStatsRange::Last30d => (now - Duration::days(30), now),
         UsageStatsRange::Last90d => (now - Duration::days(90), now),

@@ -8,8 +8,14 @@ use std::collections::{HashMap, HashSet};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenUsageRecord {
     /// Resolved `AIModelConfig.id` used for the request.
+    /// Older records predate this field; tolerate it as empty so one malformed
+    /// record cannot drop the whole day file on read (upgrade compatibility).
+    #[serde(default)]
     pub model_config_id: String,
-    /// Provider model name sent on the request.
+    /// Provider model name sent on the request. Older records persisted the
+    /// provider name under `model_id`; accept that alias for upgrade
+    /// compatibility.
+    #[serde(default, alias = "model_id")]
     pub effective_model_name: String,
     pub session_id: String,
     pub turn_id: String,

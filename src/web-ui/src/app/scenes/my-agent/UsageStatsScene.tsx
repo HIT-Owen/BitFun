@@ -10,32 +10,34 @@ import { Select, type SelectOption } from '@/component-library';
 import { configManager } from '@/infrastructure/config/services/ConfigManager';
 import { getProviderDisplayName } from '@/infrastructure/config/services/modelConfigs';
 import type { AIModelConfig } from '@/infrastructure/config/types';
-import { APPEARANCE_DOMAIN_TOKENS } from '@/infrastructure/appearance/appearanceDomainTokens';
 import { createLogger } from '@/shared/utils/logger';
 import './UsageStatsScene.scss';
 
 const log = createLogger('UsageStatsScene');
 
 // Categorical palette for distribution charts. Reuses existing appearance
-// tokens so the view stays in sync with the active skin.
+// tokens so the view stays in sync with the active skin. Ordered so that
+// consecutive entries are maximally distinct for many-item breakdowns.
 const PALETTE = [
   'var(--bf-appearance-token-color-accent-500)',
+  'var(--bf-appearance-token-color-success)',
+  'var(--bf-appearance-token-color-warning)',
+  'var(--bf-appearance-token-color-cyan-500)',
   'var(--bf-appearance-token-color-purple-500)',
-  APPEARANCE_DOMAIN_TOKENS.insights.positive,
-  APPEARANCE_DOMAIN_TOKENS.insights.time,
-  APPEARANCE_DOMAIN_TOKENS.insights.neutral,
-  APPEARANCE_DOMAIN_TOKENS.insights.issue,
+  'var(--bf-appearance-token-color-error)',
+  'var(--bf-appearance-token-color-indigo-500)',
+  'var(--bf-appearance-token-color-info)',
 ];
 
 const TREND_COLORS = {
   input: 'var(--bf-appearance-token-color-accent-500)',
-  output: APPEARANCE_DOMAIN_TOKENS.insights.positive,
-  cacheCreation: APPEARANCE_DOMAIN_TOKENS.insights.neutral,
-  cacheRead: 'var(--bf-appearance-token-color-purple-500)',
-  cacheHitRate: APPEARANCE_DOMAIN_TOKENS.insights.issue,
+  output: 'var(--bf-appearance-token-color-success)',
+  cacheHitRate: 'var(--bf-appearance-token-color-warning)',
 };
 
 const RANGES: { value: UsageStatsRange; labelKey: string }[] = [
+  { value: 'today', labelKey: 'usageStats.rangeToday' },
+  { value: 'yesterday', labelKey: 'usageStats.rangeYesterday' },
   { value: 'last7d', labelKey: 'usageStats.rangeLast7d' },
   { value: 'last30d', labelKey: 'usageStats.rangeLast30d' },
   { value: 'this_month', labelKey: 'usageStats.rangeThisMonth' },
@@ -47,6 +49,7 @@ const RANGES: { value: UsageStatsRange; labelKey: string }[] = [
 interface ModelAgg {
   key: string;
   modelName: string;
+  color: string;
   provider: string;
   endpoint: string;
   requests: number;
@@ -133,13 +136,18 @@ const UsageStatsScene: React.FC = () => {
     const byKey = new Map<string, ModelAgg>();
     for (const day of data.days) {
       for (const m of day.models) {
-        const cfg = modelMap.get(m.model_config_id);
-        let agg = byKey.get(m.model_config_id);
+        const cfg = m.model_config_id ? modelMap.get(m.model_config_id) : undefined;
+        let agg = byKey.get(m.model_key);
         if (!agg) {
           agg = {
-            key: m.model_config_id,
-            modelName: m.model_name || m.model_config_id,
-            provider: cfg ? getProviderDisplayName(cfg) : t('usageStats.deletedConfig'),
+            key: m.model_key,
+            modelName: m.model_name || m.model_key,
+            color: '',
+            provider: cfg
+              ? getProviderDisplayName(cfg)
+              : m.model_config_id
+                ? t('usageStats.deletedConfig')
+                : t('usageStats.unknownProvider'),
             endpoint: cfg ? endpointHost(cfg.request_url || cfg.base_url) : '',
             requests: 0,
             input: 0,
@@ -148,7 +156,7 @@ const UsageStatsScene: React.FC = () => {
             cacheWrite: 0,
             cacheReportedInput: 0,
           };
-          byKey.set(m.model_config_id, agg);
+          byKey.set(m.model_key, agg);
         }
         agg.requests += m.requests;
         agg.input += m.input;
@@ -158,7 +166,9 @@ const UsageStatsScene: React.FC = () => {
         agg.cacheReportedInput += m.cache_reported_input;
       }
     }
-    return Array.from(byKey.values()).sort((a, b) => b.requests - a.requests);
+    return Array.from(byKey.values())
+      .sort((a, b) => b.requests - a.requests)
+      .map((m, i) => ({ ...m, color: PALETTE[i % PALETTE.length] }));
   }, [data, modelMap, t]);
 
   const filteredModels = useMemo(() => {
@@ -310,10 +320,10 @@ const UsageStatsScene: React.FC = () => {
               title={t('usageStats.modelDistribution')}
               centerValue={compactTokens(totals!.tokens, formatNumber)}
               centerLabel={t('usageStats.tokens')}
-              segments={filteredModels.map((m, i) => ({
+              segments={filteredModels.map((m) => ({
                 label: m.modelName,
                 value: m.input + m.output,
-                color: PALETTE[i % PALETTE.length],
+                color: m.color,
                 sub: m.provider,
                 requests: m.requests,
               }))}
@@ -373,11 +383,11 @@ const ModelHitRateCard: React.FC<{ models: ModelAgg[] }> = ({ models }) => {
         <div className="usage-stats-chart-card__hint">--</div>
       ) : (
         <div className="usage-stats-bars">
-          {rows.map(({ m, rate }, i) => (
+          {rows.map(({ m, rate }) => (
             <div key={m.key} className="usage-stats-bar">
               <div className="usage-stats-bar__head">
                 <span className="usage-stats-bar__label" title={`${m.modelName} · ${m.provider}`}>
-                  <span className="usage-stats-bar__dot" style={{ background: PALETTE[i % PALETTE.length] }} />
+                  <span className="usage-stats-bar__dot" style={{ background: m.color }} />
                   <span className="usage-stats-bar__name">{m.modelName}</span>
                   <span className="usage-stats-bar__provider">{m.provider}</span>
                 </span>
@@ -388,7 +398,7 @@ const ModelHitRateCard: React.FC<{ models: ModelAgg[] }> = ({ models }) => {
               <div className="usage-stats-bar__track">
                 <div
                   className="usage-stats-bar__fill"
-                  style={{ width: `${Math.min(100, (rate ?? 0) * 100)}%`, background: PALETTE[i % PALETTE.length] }}
+                  style={{ width: `${Math.min(100, (rate ?? 0) * 100)}%`, background: m.color }}
                 />
               </div>
             </div>
@@ -494,40 +504,66 @@ const DonutChart: React.FC<{ segments: { value: number; color: string }[] }> = (
   );
 };
 
+const MARKER_LIMIT = 31;
+
+const starPoints = (cx: number, cy: number, outer: number, inner: number): string => {
+  const pts: string[] = [];
+  for (let i = 0; i < 10; i++) {
+    const angle = -Math.PI / 2 + (i * Math.PI) / 5;
+    const radius = i % 2 === 0 ? outer : inner;
+    pts.push(
+      `${(cx + radius * Math.cos(angle)).toFixed(2)},${(cy + radius * Math.sin(angle)).toFixed(2)}`,
+    );
+  }
+  return pts.join(' ');
+};
+
+const trianglePoints = (cx: number, cy: number, size: number): string =>
+  [
+    `${cx},${(cy - size).toFixed(2)}`,
+    `${(cx - size * 0.87).toFixed(2)},${(cy + size * 0.5).toFixed(2)}`,
+    `${(cx + size * 0.87).toFixed(2)},${(cy + size * 0.5).toFixed(2)}`,
+  ].join(' ');
+
 const TrendChart: React.FC<{ days: ModelUsageStatsResponse['days'] }> = ({ days }) => {
   const { t, formatNumber } = useI18n('common');
 
   const width = 720;
   const height = 240;
-  const padX = 8;
-  const padTop = 12;
+  const padLeft = 46;
+  const padRight = 46;
+  const padTop = 14;
   const padBottom = 26;
-  const padRight = 44;
-  const plotW = width - padX - padRight;
+  const plotW = width - padLeft - padRight;
   const plotH = height - padTop - padBottom;
 
   const series = useMemo(() => {
     const input: number[] = days.map((d) => d.input);
     const output: number[] = days.map((d) => d.output);
-    const cacheCreation: number[] = days.map((d) => d.cache_write);
-    const cacheRead: number[] = days.map((d) => d.cached);
     const hitRate: (number | null)[] = days.map((d) =>
       d.cache_reported_input > 0 ? d.cached / d.cache_reported_input : null,
     );
-    return { input, output, cacheCreation, cacheRead, hitRate };
+    return { input, output, hitRate };
   }, [days]);
 
-  const maxToken = useMemo(() => {
-    const all = [...series.input, ...series.output, ...series.cacheCreation, ...series.cacheRead];
-    return Math.max(1, ...all);
-  }, [series]);
+  const maxToken = useMemo(() => Math.max(1, ...series.input, ...series.output), [series]);
+  const logMax = Math.log10(maxToken + 1);
 
   const xFor = (i: number): number => {
-    if (days.length <= 1) return padX + plotW / 2;
-    return padX + (i / (days.length - 1)) * plotW;
+    if (days.length <= 1) return padLeft + plotW / 2;
+    return padLeft + (i / (days.length - 1)) * plotW;
   };
-  const yForToken = (v: number): number => padTop + plotH - (v / maxToken) * plotH;
-  const yForRate = (v: number): number => padTop + plotH - v * plotH;
+  // Token axis is log-scaled (base 10, with a +1 offset so 0 maps to the floor)
+  // so input and output that differ by orders of magnitude both stay visible.
+  const yForToken = (v: number): number => padTop + plotH - (Math.log10(v + 1) / logMax) * plotH;
+  // Cache hit rate uses a separate linear 0-100% axis on the right.
+  const yForRate = (v: number): number => padTop + plotH - Math.max(0, Math.min(1, v)) * plotH;
+
+  const tokenGrid = useMemo(() => {
+    const vals: number[] = [0];
+    for (let g = 1; g <= maxToken; g *= 10) vals.push(g);
+    return vals;
+  }, [maxToken]);
 
   const polyline = (values: number[], yFor: (v: number) => number): string =>
     values.map((v, i) => `${xFor(i)},${yFor(v)}`).join(' ');
@@ -546,14 +582,12 @@ const TrendChart: React.FC<{ days: ModelUsageStatsResponse['days'] }> = ({ days 
     return idx;
   }, [days]);
 
-  const yTicks = [0, 0.25, 0.5, 0.75, 1];
+  const showMarkers = days.length <= MARKER_LIMIT;
 
   const legend = [
     { label: t('usageStats.legendInput'), color: TREND_COLORS.input },
     { label: t('usageStats.legendOutput'), color: TREND_COLORS.output },
-    { label: t('usageStats.legendCacheCreation'), color: TREND_COLORS.cacheCreation },
-    { label: t('usageStats.legendCacheRead'), color: TREND_COLORS.cacheRead },
-    { label: t('usageStats.legendCacheHitRate'), color: TREND_COLORS.cacheHitRate, dashed: true },
+    { label: t('usageStats.legendCacheHitRate'), color: TREND_COLORS.cacheHitRate },
   ];
 
   const formatShortDate = (date: string): string => {
@@ -566,43 +600,58 @@ const TrendChart: React.FC<{ days: ModelUsageStatsResponse['days'] }> = ({ days 
       <div className="usage-stats-chart-card__title">{t('usageStats.tokenTrend')}</div>
       <div className="usage-stats-trend">
         <svg width="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet">
-          {yTicks.map((f) => {
-            const y = yForToken(maxToken * f);
-            return (
-              <line
-                key={f}
-                x1={padX}
-                y1={y}
-                x2={width - padRight}
-                y2={y}
-                stroke="var(--bf-appearance-token-border-subtle)"
-                strokeWidth="1"
-              />
-            );
-          })}
+          {tokenGrid.map((g) => (
+            <line
+              key={`g-${g}`}
+              x1={padLeft}
+              y1={yForToken(g)}
+              x2={width - padRight}
+              y2={yForToken(g)}
+              stroke="var(--bf-appearance-token-border-subtle)"
+              strokeWidth="1"
+            />
+          ))}
+          {tokenGrid.map((g) => (
+            <text
+              key={`lt-${g}`}
+              x={padLeft - 6}
+              y={yForToken(g) + 3}
+              textAnchor="end"
+              className="usage-stats-trend__axis"
+            >
+              {compactTokens(g, formatNumber)}
+            </text>
+          ))}
+          {[0, 0.5, 1].map((f) => (
+            <text
+              key={`rt-${f}`}
+              x={width - padRight + 6}
+              y={yForRate(f) + 3}
+              textAnchor="start"
+              className="usage-stats-trend__axis"
+            >
+              {Math.round(f * 100)}%
+            </text>
+          ))}
           <polyline points={polyline(series.input, yForToken)} fill="none" stroke={TREND_COLORS.input} strokeWidth="1.5" />
           <polyline points={polyline(series.output, yForToken)} fill="none" stroke={TREND_COLORS.output} strokeWidth="1.5" />
-          <polyline points={polyline(series.cacheCreation, yForToken)} fill="none" stroke={TREND_COLORS.cacheCreation} strokeWidth="1.5" />
-          <polyline points={polyline(series.cacheRead, yForToken)} fill="none" stroke={TREND_COLORS.cacheRead} strokeWidth="1.5" />
           {hitRatePoints && (
-            <polyline
-              points={hitRatePoints}
-              fill="none"
-              stroke={TREND_COLORS.cacheHitRate}
-              strokeWidth="1.5"
-              strokeDasharray="4 4"
-            />
+            <polyline points={hitRatePoints} fill="none" stroke={TREND_COLORS.cacheHitRate} strokeWidth="1.5" />
           )}
-          {yTicks.map((f) => (
-            <text key={`l-${f}`} x={width - padRight + 6} y={yForToken(maxToken * f) + 3} className="usage-stats-trend__axis">
-              {compactTokens(maxToken * f, formatNumber)}
-            </text>
-          ))}
-          {yTicks.map((f) => (
-            <text key={`r-${f}`} x={width - padRight + 6} y={yForRate(f) + 3} className="usage-stats-trend__axis usage-stats-trend__axis--right">
-              {f === 0 ? '0%' : f === 1 ? '100%' : ''}
-            </text>
-          ))}
+          {showMarkers &&
+            series.input.map((v, i) => (
+              <polygon key={`si-${i}`} points={starPoints(xFor(i), yForToken(v), 5, 2)} fill={TREND_COLORS.input} />
+            ))}
+          {showMarkers &&
+            series.output.map((v, i) => (
+              <polygon key={`so-${i}`} points={trianglePoints(xFor(i), yForToken(v), 5)} fill={TREND_COLORS.output} />
+            ))}
+          {showMarkers &&
+            series.hitRate.map((v, i) =>
+              v == null ? null : (
+                <circle key={`sr-${i}`} cx={xFor(i)} cy={yForRate(v)} r={3.5} fill={TREND_COLORS.cacheHitRate} />
+              ),
+            )}
           {xTicks.map((i) => (
             <text key={`x-${i}`} x={xFor(i)} y={height - 8} textAnchor="middle" className="usage-stats-trend__axis">
               {formatShortDate(days[i].date)}
@@ -614,11 +663,7 @@ const TrendChart: React.FC<{ days: ModelUsageStatsResponse['days'] }> = ({ days 
             <span key={l.label} className="usage-stats-trend__legend-item">
               <span
                 className="usage-stats-trend__legend-swatch"
-                style={{
-                  background: l.dashed ? 'transparent' : l.color,
-                  borderColor: l.color,
-                  borderStyle: l.dashed ? 'dashed' : 'solid',
-                }}
+                style={{ background: 'transparent', borderColor: l.color }}
               />
               {l.label}
             </span>

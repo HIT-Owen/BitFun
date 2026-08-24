@@ -1243,6 +1243,8 @@
     "title": "Usage Stats",
     "subtitle": "Historical model call statistics saved locally on this device. Not merged or synced across devices. Includes request counts, token usage, and cache hit rates by model, provider, and endpoint.",
     "rangeLabel": "Range",
+    "rangeToday": "Today",
+    "rangeYesterday": "Yesterday",
     "rangeLast7d": "Last 7 days",
     "rangeLast30d": "Last 30 days",
     "rangeThisMonth": "This month",
