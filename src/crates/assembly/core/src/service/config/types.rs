@@ -594,6 +594,10 @@ pub struct DefaultModelsConfig {
     pub image_generation: Option<String>,
     /// Speech recognition model.
     pub speech_recognition: Option<String>,
+    /// Context compression model. When set and valid, sessions use this model
+    /// to generate context compression summaries; otherwise the session's turn
+    /// model is used.
+    pub context_compression: Option<String>,
 }
 
 /// Model choice for a subagent created in the context of a parent session.

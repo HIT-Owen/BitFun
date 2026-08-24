@@ -315,6 +315,7 @@ export interface DefaultModelsConfig {
   fast?: string | null;
   image_understanding?: string | null;
   speech_recognition?: string | null;
+  context_compression?: string | null;
 }
 
 export type SubagentModelSelection =
@@ -770,6 +771,7 @@ export interface DefaultModels {
   fast: string | null;
   image_understanding?: string | null;
   speech_recognition?: string | null;
+  context_compression?: string | null;
 }
 
 export type OptionalCapabilityModels = Record<string, never>;

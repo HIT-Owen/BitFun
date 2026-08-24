@@ -2030,6 +2030,68 @@ impl ExecutionEngine {
         Ok(Some(summary))
     }
 
+    /// Resolve the AI client used for context compression.
+    ///
+    /// When `ai.default_models.context_compression` names a valid, enabled
+    /// model, context compression prefers that dedicated model. Otherwise it
+    /// returns `fallback_client`, which carries the session's turn model.
+    ///
+    /// An `ApprovedImmutable` session always keeps its approved binding and is
+    /// never re-pointed to a different model. Any configuration or client-build
+    /// problem degrades to the fallback client rather than failing compression.
+    async fn resolve_compression_ai_client(
+        &self,
+        session: &Session,
+        fallback_client: Arc<crate::infrastructure::ai::AIClient>,
+    ) -> Arc<crate::infrastructure::ai::AIClient> {
+        if matches!(
+            session.config.model_binding_policy,
+            SessionModelBindingPolicy::ApprovedImmutable
+        ) {
+            return fallback_client;
+        }
+
+        let Ok(config_service) = get_global_config_service().await else {
+            return fallback_client;
+        };
+        let ai_config: crate::service::config::types::AIConfig = config_service
+            .get_config(Some("ai"))
+            .await
+            .unwrap_or_default();
+        let Some(compression_model_ref) = ai_config.default_models.context_compression.as_deref()
+        else {
+            return fallback_client;
+        };
+        let Some(compression_model_id) = ai_config.resolve_model_reference(compression_model_ref)
+        else {
+            warn!(
+                "Configured context compression model is unavailable, using session model: session_id={}, model_ref={}",
+                session.session_id, compression_model_ref
+            );
+            return fallback_client;
+        };
+        if compression_model_id == fallback_client.config.model {
+            return fallback_client;
+        }
+
+        let Ok(ai_client_factory) = get_global_ai_client_factory().await else {
+            return fallback_client;
+        };
+        match ai_client_factory
+            .get_client_resolved_with_reasoning_preset(&compression_model_id, None)
+            .await
+        {
+            Ok(client) => client,
+            Err(error) => {
+                warn!(
+                    "Failed to build context compression AI client (model_id={}), using session model: {}",
+                    compression_model_id, error
+                );
+                fallback_client
+            }
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     async fn build_planned_compression_result(
         &self,
@@ -2387,6 +2449,10 @@ impl ExecutionEngine {
             .get_session(session_id)
             .ok_or_else(|| BitFunError::NotFound(format!("Session not found: {}", session_id)))?;
 
+        // Prefer a user-configured context compression model when available;
+        // otherwise the session's turn model (the `ai_client` argument) is used.
+        let ai_client = self.resolve_compression_ai_client(&session, ai_client).await;
+
         // Record start time
         let start_time = std::time::Instant::now();
 
@@ -2707,6 +2773,9 @@ impl ExecutionEngine {
             scaffold.ai_client.as_ref(),
         )
         .await;
+        let compression_ai_client = self
+            .resolve_compression_ai_client(&session, scaffold.ai_client.clone())
+            .await;
         let planned_result = tokio::select! {
             biased;
             _ = cancellation_token.cancelled() => {
@@ -2718,7 +2787,7 @@ impl ExecutionEngine {
                 &runtime_messages,
                 context_window,
                 compression_contract,
-                scaffold.ai_client.clone(),
+                compression_ai_client,
                 &scaffold.tool_definitions,
                 &scaffold.prepended_prompt_reminders,
                 scaffold.primary_supports_image_understanding,

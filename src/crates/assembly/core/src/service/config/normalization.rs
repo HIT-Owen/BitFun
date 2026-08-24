@@ -399,6 +399,12 @@ pub fn reconcile_model_references(config: &mut GlobalConfig) -> ModelReferenceRe
         ModelCapability::SpeechRecognition,
         false,
     );
+    reconcile_slot(
+        &mut config.ai.default_models.context_compression,
+        "ai.default_models.context_compression",
+        ModelCapability::TextChat,
+        false,
+    );
 
     result.invalidated_model_ids = invalidated.into_iter().collect();
     result.invalidated_model_ids.sort();

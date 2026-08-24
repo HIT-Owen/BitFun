@@ -20,7 +20,12 @@ const log = createLogger('DefaultModelConfig');
 const normalizeSelectValue = (value: string | number | (string | number)[]): string | number =>
   Array.isArray(value) ? (value[0] ?? '') : value;
 
-type DefaultModelSlot = 'primary' | 'fast' | 'image_understanding' | 'speech_recognition';
+type DefaultModelSlot =
+  | 'primary'
+  | 'fast'
+  | 'image_understanding'
+  | 'speech_recognition'
+  | 'context_compression';
 
 export const DefaultModelConfig: React.FC = () => {
   const { t } = useTranslation('settings/default-model');
@@ -40,6 +45,7 @@ export const DefaultModelConfig: React.FC = () => {
     fast: null,
     image_understanding: null,
     speech_recognition: null,
+    context_compression: null,
   });
 
   const loadData = useCallback(async () => {
@@ -58,6 +64,7 @@ export const DefaultModelConfig: React.FC = () => {
         fast: defaultModelsConfig?.fast || null,
         image_understanding: defaultModelsConfig?.image_understanding || null,
         speech_recognition: defaultModelsConfig?.speech_recognition || null,
+        context_compression: defaultModelsConfig?.context_compression || null,
       });
     } catch (error) {
       log.error('Failed to load data', error);
@@ -101,6 +108,8 @@ export const DefaultModelConfig: React.FC = () => {
         return t('optional.capabilities.image_understanding.label');
       case 'speech_recognition':
         return t('optional.capabilities.speech_recognition.label');
+      case 'context_compression':
+        return t('optional.capabilities.context_compression.label');
       default: {
         const exhaustive: never = slot;
         return exhaustive;
@@ -253,6 +262,28 @@ export const DefaultModelConfig: React.FC = () => {
           renderValue={renderModelValue}
           className="default-model-config__model-select"
           disabled={speechRecognitionModels.length === 0}
+          size="small"
+        />
+      </ConfigPageRow>
+
+      <ConfigPageRow
+        label={renderOptionalLabel(t('optional.capabilities.context_compression.label'))}
+        description={t('optional.capabilities.context_compression.description')}
+        align="center"
+      >
+        <Select
+          data-bf-component="default-model-config"
+          data-bf-part="contextCompressionModel"
+          value={defaultModels.context_compression || ''}
+          onChange={(value) => handleDefaultModelChange('context_compression', normalizeSelectValue(value))}
+          placeholder={t('optional.notSet')}
+          options={[
+            { label: t('optional.notSet'), value: '' },
+            ...enabledModels.map(buildModelOption),
+          ]}
+          renderOption={renderModelOption}
+          renderValue={renderModelValue}
+          className="default-model-config__model-select"
           size="small"
         />
       </ConfigPageRow>

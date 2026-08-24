@@ -38,6 +38,10 @@
       "speech_recognition": {
         "label": "Speech Recognition",
         "description": "Convert speech to text, support voice input"
+      },
+      "context_compression": {
+        "label": "Context Compression",
+        "description": "Summarize long conversation context, optimizing context usage and cost"
       }
     },
     "notConfigured": "Not configured",

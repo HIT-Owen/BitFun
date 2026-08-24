@@ -38,6 +38,10 @@
       "speech_recognition": {
         "label": "語音識別",
         "description": "將語音轉換為文字，支持語音輸入"
+      },
+      "context_compression": {
+        "label": "上下文壓縮模型",
+        "description": "用於壓縮長對話上下文，優化上下文佔用與成本"
       }
     },
     "notConfigured": "未設定",
