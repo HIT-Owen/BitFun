@@ -23,7 +23,6 @@ import { useI18n } from '@/infrastructure/i18n/hooks/useI18n';
 import type { SceneTabId } from '../SceneBar/types';
 import SectionHeader from './components/SectionHeader';
 import AssistantSessionCreateMenu from './components/AssistantSessionCreateMenu';
-import MiniAppEntry from './components/MiniAppEntry';
 import WorkspaceListSection from './sections/workspaces/WorkspaceListSection';
 import SessionsSection from './sections/sessions/SessionsSection';
 import { useSceneStore } from '../../stores/sceneStore';
@@ -97,11 +96,6 @@ const MainNav: React.FC<MainNavProps> = ({
     enabled: !workspaceLoading,
     initialLoad: 'idle',
   });
-
-  const activeMiniAppId = useMemo(
-    () => (typeof activeTabId === 'string' && activeTabId.startsWith('miniapp:') ? activeTabId.slice('miniapp:'.length) : null),
-    [activeTabId]
-  );
 
   // Section expand state
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
@@ -764,30 +758,6 @@ const MainNav: React.FC<MainNavProps> = ({
           </div>
         </div>
 
-      </div>
-
-      {/* ── Bottom: MiniApp ───────────────────────── */}
-      <div data-bf-component="nav-panel" data-bf-part="bottomBar" className="bitfun-nav-panel__bottom-bar" data-testid="nav-bottom-bar">
-        {/* Temporarily hide Pages entry
-        <button
-          type="button"
-          className={`bitfun-nav-panel__pages-entry${activeTabId === 'pages' ? ' is-active' : ''}`}
-          onClick={() => openScene('pages')}
-          aria-label={tPages('navLabel')}
-          data-testid="nav-pages-entry"
-        >
-          <PanelsTopLeft size={15} aria-hidden="true" />
-          <span>{tPages('navLabel')}</span>
-        </button>
-        */}
-        <div className="bitfun-nav-panel__miniapp-footer" data-bf-component="nav-panel" data-bf-part="miniAppFooter">
-          <MiniAppEntry
-            isActive={activeTabId === 'miniapps' || !!activeMiniAppId}
-            activeMiniAppId={activeMiniAppId}
-            onOpenMiniApps={() => openScene('miniapps')}
-            onOpenMiniApp={(appId) => openScene(`miniapp:${appId}`)}
-          />
-        </div>
       </div>
 
       {workspaceMenuPortal}

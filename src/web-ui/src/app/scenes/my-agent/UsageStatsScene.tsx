@@ -531,6 +531,7 @@ const trianglePoints = (cx: number, cy: number, size: number): string =>
 
 const TrendChart: React.FC<{ days: ModelUsageStatsResponse['days'] }> = ({ days }) => {
   const { t, formatNumber } = useI18n('common');
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
   const width = 720;
   const height = 240;
@@ -596,7 +597,7 @@ const TrendChart: React.FC<{ days: ModelUsageStatsResponse['days'] }> = ({ days 
   const legend = [
     { label: t('usageStats.legendInput'), color: TREND_COLORS.input },
     { label: t('usageStats.legendOutput'), color: TREND_COLORS.output },
-    { label: t('usageStats.legendCacheHitRate'), color: TREND_COLORS.cacheHitRate },
+    { label: t('usageStats.legendCacheHitRate'), color: TREND_COLORS.cacheHitRate, dashed: true },
   ];
 
   const formatShortDate = (date: string): string => {
@@ -672,13 +673,79 @@ const TrendChart: React.FC<{ days: ModelUsageStatsResponse['days'] }> = ({ days 
               {formatShortDate(days[i].date)}
             </text>
           ))}
+          {hoverIndex != null && (
+            <line
+              x1={xFor(hoverIndex)}
+              y1={padTop}
+              x2={xFor(hoverIndex)}
+              y2={height - padBottom}
+              stroke="var(--bf-appearance-token-color-text-muted)"
+              strokeWidth="1"
+              strokeDasharray="2 2"
+            />
+          )}
+          {days.map((_, i) => {
+            const w = Math.max(2, plotW / Math.max(days.length, 1));
+            const x = Math.max(padLeft, Math.min(width - padRight - w, xFor(i) - w / 2));
+            return (
+              <rect
+                key={`hit-${i}`}
+                x={x}
+                y={padTop}
+                width={w}
+                height={plotH}
+                fill="transparent"
+                pointerEvents="all"
+                onMouseEnter={() => setHoverIndex(i)}
+                onMouseLeave={() => setHoverIndex(null)}
+              />
+            );
+          })}
+          {hoverIndex != null &&
+            (() => {
+              const d = days[hoverIndex];
+              const hit = d.cache_reported_input > 0 ? (d.cached / d.cache_reported_input) * 100 : null;
+              const tipW = 150;
+              const tipH = 96;
+              const estRight = xFor(hoverIndex) + 12 + tipW;
+              const tipX = estRight > width - padRight ? xFor(hoverIndex) - tipW - 12 : xFor(hoverIndex) + 12;
+              const tipY = Math.max(4, padTop);
+              const rows = [
+                { label: t('usageStats.legendInput'), value: formatNumber(d.input), color: TREND_COLORS.input },
+                { label: t('usageStats.legendOutput'), value: formatNumber(d.output), color: TREND_COLORS.output },
+                {
+                  label: t('usageStats.legendCacheHitRate'),
+                  value: hit == null ? '--' : `${hit.toFixed(1)}%`,
+                  color: TREND_COLORS.cacheHitRate,
+                },
+              ];
+              return (
+                <g pointerEvents="none">
+                  <rect x={tipX} y={tipY} width={tipW} height={tipH} rx={6} fill="var(--bf-appearance-token-element-bg-medium)" stroke="var(--bf-appearance-token-border-strong)" strokeWidth="1" />
+                  <text x={tipX + 10} y={tipY + 16} className="usage-stats-trend__tooltip-title">
+                    {d.date}
+                  </text>
+                  {rows.map((r, ri) => (
+                    <g key={ri}>
+                      <rect x={tipX + 10} y={tipY + 28 + ri * 20} width={8} height={8} rx={2} fill={r.color} />
+                      <text x={tipX + 24} y={tipY + 35 + ri * 20} className="usage-stats-trend__tooltip-text">
+                        {r.label}
+                      </text>
+                      <text x={tipX + tipW - 10} y={tipY + 35 + ri * 20} textAnchor="end" className="usage-stats-trend__tooltip-text">
+                        {r.value}
+                      </text>
+                    </g>
+                  ))}
+                </g>
+              );
+            })()}
         </svg>
         <div className="usage-stats-trend__legend">
           {legend.map((l) => (
             <span key={l.label} className="usage-stats-trend__legend-item">
               <span
                 className="usage-stats-trend__legend-swatch"
-                style={{ background: 'transparent', borderColor: l.color }}
+                style={{ background: 'transparent', borderColor: l.color, borderStyle: l.dashed ? 'dashed' : 'solid' }}
               />
               {l.label}
             </span>

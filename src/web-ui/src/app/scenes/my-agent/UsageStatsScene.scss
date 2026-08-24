@@ -485,6 +485,17 @@
   font-size: 9px;
 }
 
+.usage-stats-trend__tooltip-title {
+  fill: var(--bf-appearance-token-color-text-primary);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.usage-stats-trend__tooltip-text {
+  fill: var(--bf-appearance-token-color-text-secondary);
+  font-size: 10px;
+}
+
 .usage-stats-trend__legend {
   display: flex;
   align-items: center;

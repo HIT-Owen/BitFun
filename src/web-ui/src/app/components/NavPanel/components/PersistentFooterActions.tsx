@@ -24,7 +24,6 @@ import { useNotification } from '@/shared/notification-system';
 import { useAccountLoginState } from '@/infrastructure/account/useAccountLoginState';
 import { remoteConnectAPI } from '@/infrastructure/api/service-api/RemoteConnectAPI';
 import NotificationButton from '../../TitleBar/NotificationButton';
-import GithubStarButton from './GithubStarButton';
 import {
   RemoteConnectDisclaimerContent,
 } from '../../RemoteConnectDialog/RemoteConnectDisclaimer';
@@ -286,18 +285,6 @@ const PersistentFooterActions: React.FC = () => {
                     type="button"
                     className="bitfun-nav-panel__footer-menu-item"
                     role="menuitem"
-                    onClick={handleOpenSettings}
-                    data-testid="nav-footer-settings-item"
-                    data-bf-component="nav-panel"
-                    data-bf-part="footerMenuItem"
-                  >
-                    <Settings size={14} />
-                    <span>{t('shared:features.settings')}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="bitfun-nav-panel__footer-menu-item"
-                    role="menuitem"
                     data-bf-component="nav-panel"
                     data-bf-part="footerMenuItem"
                     onClick={handleShowAbout}
@@ -310,6 +297,22 @@ const PersistentFooterActions: React.FC = () => {
               getAppearanceOverlayHost(),
             )}
           </div>
+
+          <Tooltip content={t('shared:features.settings')} placement="right">
+            <button
+              type="button"
+              className={`bitfun-nav-panel__footer-btn bitfun-nav-panel__footer-btn--icon${activeTabId === 'settings' ? ' is-active' : ''}`}
+              aria-label={t('shared:features.settings')}
+              aria-pressed={activeTabId === 'settings'}
+              onClick={handleOpenSettings}
+              data-testid="nav-footer-settings-btn"
+              data-bf-component="nav-panel"
+              data-bf-part="footerButton"
+              data-bf-state={activeTabId === 'settings' ? 'active' : undefined}
+            >
+              <Settings size={15} aria-hidden="true" />
+            </button>
+          </Tooltip>
 
           <Tooltip content={t('scenes.shell')} placement="right">
             <button
@@ -351,7 +354,6 @@ const PersistentFooterActions: React.FC = () => {
         </div>
 
         <div className="bitfun-nav-panel__footer-right">
-          <GithubStarButton />
           <NotificationButton className="bitfun-nav-panel__footer-btn" navFooterHoverIconSwap />
         </div>
       </div>
