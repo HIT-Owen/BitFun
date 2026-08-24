@@ -1,11 +1,5 @@
 use bitfun_agent_content::{
-    agent_prompt, agent_prompt_names,
-    insights::{
-        AREAS, AT_A_GLANCE, FACET_EXTRACTION, FRICTION, FUN_ENDING, HORIZON, INTERACTION_STYLE,
-        SUGGESTIONS, WINS,
-    },
-    memories::PHASE1_SYSTEM,
-    EMBEDDED_PROMPTS,
+    agent_prompt, agent_prompt_names, memories::PHASE1_SYSTEM, EMBEDDED_PROMPTS,
 };
 
 const CATALOG_PROMPT_SOURCES: &[(&str, &[u8])] = &[
@@ -143,66 +137,6 @@ fn agent_prompt_catalog_preserves_every_stable_key() {
     }
 
     assert_eq!(agent_prompt("unknown_prompt"), None);
-}
-
-#[test]
-fn insights_prompt_constants_preserve_all_nine_non_empty_templates() {
-    let prompts = [
-        (
-            "facet_extraction",
-            FACET_EXTRACTION,
-            include_bytes!("../prompts/insights/facet_extraction.md") as &[u8],
-        ),
-        (
-            "suggestions",
-            SUGGESTIONS,
-            include_bytes!("../prompts/insights/suggestions.md") as &[u8],
-        ),
-        (
-            "areas",
-            AREAS,
-            include_bytes!("../prompts/insights/areas.md") as &[u8],
-        ),
-        (
-            "wins",
-            WINS,
-            include_bytes!("../prompts/insights/wins.md") as &[u8],
-        ),
-        (
-            "friction",
-            FRICTION,
-            include_bytes!("../prompts/insights/friction.md") as &[u8],
-        ),
-        (
-            "interaction_style",
-            INTERACTION_STYLE,
-            include_bytes!("../prompts/insights/interaction_style.md") as &[u8],
-        ),
-        (
-            "at_a_glance",
-            AT_A_GLANCE,
-            include_bytes!("../prompts/insights/at_a_glance.md") as &[u8],
-        ),
-        (
-            "horizon",
-            HORIZON,
-            include_bytes!("../prompts/insights/horizon.md") as &[u8],
-        ),
-        (
-            "fun_ending",
-            FUN_ENDING,
-            include_bytes!("../prompts/insights/fun_ending.md") as &[u8],
-        ),
-    ];
-
-    assert_eq!(prompts.len(), 9);
-    for (name, prompt, source) in prompts {
-        assert_eq!(
-            prompt.as_bytes(),
-            source,
-            "direct include bytes changed for {name}"
-        );
-    }
 }
 
 #[test]

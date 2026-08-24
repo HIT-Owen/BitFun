@@ -52,9 +52,6 @@ pub mod workspace;
 
 mod util;
 
-// Insights module
-pub mod insights;
-
 pub use agents::*;
 pub use context_profile::*;
 pub use coordination::*;

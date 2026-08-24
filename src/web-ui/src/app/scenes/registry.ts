@@ -144,8 +144,8 @@ export const SCENE_TAB_REGISTRY: SceneTabDef[] = [
   },
   {
     id: 'insights' as SceneTabId,
-    label: 'Insights',
-    labelKey: 'scenes.insights',
+    label: 'Usage Stats',
+    labelKey: 'scenes.usageStats',
     Icon: BarChart3,
     pinned: false,
     singleton: true,

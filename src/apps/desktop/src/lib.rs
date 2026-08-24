@@ -1644,6 +1644,7 @@ pub async fn run() {
             api::terminal_api::terminal_has_shell_integration,
             api::terminal_api::terminal_shutdown_all,
             api::terminal_api::terminal_get_history,
+            api::token_usage_api::get_model_usage_stats,
             get_system_info,
             get_app_version,
             check_for_updates,
@@ -1816,12 +1817,6 @@ pub async fn run() {
             api::browser_control_api::browser_control_launch,
             api::browser_control_api::browser_control_enable_default_cdp,
             api::browser_control_api::browser_control_restart_with_cdp,
-            // Insights API
-            api::insights_api::generate_insights,
-            api::insights_api::get_latest_insights,
-            api::insights_api::load_insights_report,
-            api::insights_api::has_insights_data,
-            api::insights_api::cancel_insights_generation,
             // SSH Remote API
             api::ssh_api::ssh_list_saved_connections,
             api::ssh_api::ssh_save_connection,

@@ -249,10 +249,6 @@ pub const REMOTE_WORKSPACE_COMMAND_POLICIES: &[(&str, RemoteWorkspacePolicy)] = 
     ),
     ("cancel_dialog_turn", RemoteWorkspacePolicy::LegacyUnaudited),
     (
-        "cancel_insights_generation",
-        RemoteWorkspacePolicy::LocalOnly,
-    ),
-    (
         "cancel_mcp_remote_oauth",
         RemoteWorkspacePolicy::LegacyUnaudited,
     ),
@@ -499,7 +495,6 @@ pub const REMOTE_WORKSPACE_COMMAND_POLICIES: &[(&str, RemoteWorkspacePolicy)] = 
         "generate_greeting_only",
         RemoteWorkspacePolicy::LegacyUnaudited,
     ),
-    ("generate_insights", RemoteWorkspacePolicy::RemoteRouted),
     (
         "generate_session_title",
         RemoteWorkspacePolicy::LegacyUnaudited,
@@ -649,7 +644,6 @@ pub const REMOTE_WORKSPACE_COMMAND_POLICIES: &[(&str, RemoteWorkspacePolicy)] = 
         "get_health_status",
         RemoteWorkspacePolicy::WorkspaceAgnostic,
     ),
-    ("get_latest_insights", RemoteWorkspacePolicy::LocalOnly),
     ("get_mcp_prompt", RemoteWorkspacePolicy::LegacyUnaudited),
     (
         "get_mcp_remote_oauth_session",
@@ -683,6 +677,7 @@ pub const REMOTE_WORKSPACE_COMMAND_POLICIES: &[(&str, RemoteWorkspacePolicy)] = 
         RemoteWorkspacePolicy::LegacyUnaudited,
     ),
     ("get_model_configs", RemoteWorkspacePolicy::LegacyUnaudited),
+    ("get_model_usage_stats", RemoteWorkspacePolicy::LocalOnly),
     (
         "get_opened_workspaces",
         RemoteWorkspacePolicy::LegacyUnaudited,
@@ -830,7 +825,6 @@ pub const REMOTE_WORKSPACE_COMMAND_POLICIES: &[(&str, RemoteWorkspacePolicy)] = 
         "grant_miniapp_workspace",
         RemoteWorkspacePolicy::LegacyUnaudited,
     ),
-    ("has_insights_data", RemoteWorkspacePolicy::RemoteRouted),
     (
         "hide_agent_companion_desktop_pet",
         RemoteWorkspacePolicy::LocalOnly,
@@ -976,7 +970,6 @@ pub const REMOTE_WORKSPACE_COMMAND_POLICIES: &[(&str, RemoteWorkspacePolicy)] = 
         "load_git_repo_history",
         RemoteWorkspacePolicy::LegacyUnaudited,
     ),
-    ("load_insights_report", RemoteWorkspacePolicy::LocalOnly),
     (
         "load_mcp_json_config",
         RemoteWorkspacePolicy::LegacyUnaudited,

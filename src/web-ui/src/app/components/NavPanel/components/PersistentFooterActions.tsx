@@ -151,7 +151,7 @@ const PersistentFooterActions: React.FC = () => {
     }
   }, [activeTabId, openScene, t]);
 
-  const handleOpenInsights = useCallback(() => {
+  const handleOpenUsageStats = useCallback(() => {
     closeMenu();
     openScene('insights');
   }, [closeMenu, openScene]);
@@ -277,10 +277,10 @@ const PersistentFooterActions: React.FC = () => {
                     role="menuitem"
                     data-bf-component="nav-panel"
                     data-bf-part="footerMenuItem"
-                    onClick={handleOpenInsights}
+                    onClick={handleOpenUsageStats}
                   >
                     <BarChart3 size={14} />
-                    <span>{t('scenes.insights')}</span>
+                    <span>{t('scenes.usageStats')}</span>
                   </button>
                   <button
                     type="button"
