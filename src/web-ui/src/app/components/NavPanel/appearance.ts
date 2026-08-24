@@ -19,8 +19,6 @@ export const navPanelAppearanceDescriptor: AppearanceSurfaceDescriptor = {
     { id: 'sectionContent', visualRole: 'content' },
     { id: 'assistantSessionActions', propertyProfile: 'control', visualRole: 'control' },
     { id: 'assistantSessionMenu', propertyProfile: 'overlay', visualRole: 'popup' },
-    { id: 'bottomBar', visualRole: 'toolbar', continuityGroup: 'nav-panel' },
-    { id: 'miniAppFooter', visualRole: 'toolbar', continuityGroup: 'nav-panel' },
     { id: 'footer', visualRole: 'toolbar', continuityGroup: 'nav-panel' },
     { id: 'footerButton', propertyProfile: 'control', visualRole: 'control' },
     { id: 'footerMenu', propertyProfile: 'overlay', visualRole: 'popup' },

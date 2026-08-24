@@ -4,6 +4,7 @@ export const defaultModelConfigAppearanceDescriptor: AppearanceSurfaceDescriptor
   parts: [
     { id: 'root' }, { id: 'loading' }, { id: 'empty' },
     { id: 'primaryModel' }, { id: 'lightweightModel' }, { id: 'embeddingModel' },
+    { id: 'contextCompressionModel' },
   ],
   states: [
     { id: 'loading', selector: { kind: 'self', suffix: '[data-bf-state~="loading"]' } },
