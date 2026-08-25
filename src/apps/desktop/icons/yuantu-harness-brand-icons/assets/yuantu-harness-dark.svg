@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="bgDark" cx="50%" cy="36%" r="85%">
+      <stop offset="0%" stop-color="#1E293B"/>
+      <stop offset="52%" stop-color="#0B1120"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </radialGradient>
+    <linearGradient id="ringGold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE047"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+    <linearGradient id="gridT" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5EEAD4"/>
+      <stop offset="100%" stop-color="#14B8A6"/>
+    </linearGradient>
+    <linearGradient id="alert" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#EF4444"/>
+    </linearGradient>
+    <clipPath id="inRing"><circle cx="512" cy="512" r="360"/></clipPath>
+  </defs>
+
+  <!-- rounded-square background -->
+  <rect x="24" y="24" width="976" height="976" rx="220" fill="url(#bgDark)"/>
+  <rect x="24" y="24" width="976" height="976" rx="220" fill="none" stroke="#FFFFFF" stroke-opacity="0.10" stroke-width="6"/>
+
+  <!-- crossing grid diagonals (bottommost layer, extend a bit past the ring) -->
+  <g stroke="url(#gridT)" stroke-width="10" stroke-linecap="round" opacity="0.65">
+    <line x1="208" y1="208" x2="816" y2="816"/>
+    <line x1="816" y1="208" x2="208" y2="816"/>
+  </g>
+
+  <!-- glow behind the badge -->
+  <circle cx="512" cy="512" r="380" fill="#FCD34D" opacity="0.10"/>
+
+  <!-- content clipped inside the gold ring -->
+  <g clip-path="url(#inRing)">
+    <!-- source-map grid -->
+    <g stroke="url(#gridT)" stroke-width="10" stroke-linecap="round" opacity="0.65">
+      <line x1="512" y1="152" x2="512" y2="872"/>
+      <line x1="152" y1="512" x2="872" y2="512"/>
+    </g>
+  </g>
+
+  <!-- gold compass ring -->
+  <circle cx="512" cy="512" r="360" fill="none" stroke="url(#ringGold)" stroke-width="22"/>
+  <circle cx="512" cy="512" r="382" fill="none" stroke="#FDE047" stroke-width="4" opacity="0.35"/>
+
+  <!-- compass needle -->
+  <g>
+    <polygon points="512,212 538,502 486,502" fill="#FDE047"/>
+    <polygon points="512,812 538,522 486,522" fill="#F59E0B"/>
+    <polygon points="212,512 502,486 502,538" fill="#F59E0B"/>
+    <polygon points="812,512 522,486 522,538" fill="#F59E0B"/>
+  </g>
+
+  <!-- knowledge nodes -->
+  <g>
+    <circle cx="512" cy="512" r="42" fill="#FFFFFF"/>
+    <circle cx="512" cy="512" r="28" fill="url(#alert)"/>
+    <circle cx="356" cy="672" r="30" fill="#5EEAD4"/>
+    <circle cx="668" cy="672" r="30" fill="#5EEAD4"/>
+    <circle cx="512" cy="872" r="24" fill="#F59E0B"/>
+  </g>
+
+  <!-- trust check -->
+  <path d="M430 560 L505 640 L645 455" fill="none" stroke="#22C55E" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- white knowledge quadrilateral (topmost layer) -->
+  <polygon points="512,512 356,672 512,872 668,672" fill="none" stroke="#FFFFFF" stroke-width="8" stroke-linejoin="round"/>
+</svg>
