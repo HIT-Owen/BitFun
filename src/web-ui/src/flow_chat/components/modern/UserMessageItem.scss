@@ -142,7 +142,9 @@
   font-size: var(--bf-appearance-token-flowchat-font-size-base);
   font-weight: 500;
   line-height: var(--bf-appearance-token-flowchat-text-line-height);
-  color: var(--bf-appearance-token-color-text-primary);
+  /* User input reads in the theme's user-voice color so it stays distinct from
+   * agent output, which stays on text-primary. */
+  color: var(--bf-appearance-token-flowchat-user-text-color);
   white-space: pre-wrap;
   display: -webkit-box;
   -webkit-line-clamp: 3;

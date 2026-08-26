@@ -89,6 +89,26 @@ function colorToRgbChannels(value: string): string | null {
   return rgb ? `${rgb[1]} ${rgb[2]} ${rgb[3]}` : null;
 }
 
+/**
+ * Flow chat user-input text color, per builtin palette. Kept distinct from
+ * `color-text-primary` so user prompts read as the user's voice while agent
+ * output stays neutral. Values are tuned per palette for >= 4.5:1 contrast
+ * against the user bubble surface and chosen from the palette's own hue
+ * family (avoiding semantic colors and the flow chat link color). Third-party
+ * palettes miss this table and get the per-type default; consumers should
+ * also fall back to `--bf-appearance-token-color-text-primary` via var().
+ */
+const FLOWCHAT_USER_TEXT_COLOR: Record<string, string> = {
+  'bitfun-light': '#655680',
+  'bitfun-slate': '#b8c4ff',
+  'bitfun-dark': '#b4a0fc',
+  'bitfun-midnight': '#b39dff',
+  'bitfun-china-style': '#2e5e8a',
+  'bitfun-china-night': '#93b7d4',
+  'bitfun-cyber': '#7fd8ff',
+  'bitfun-tokyo-night': '#bb9af7',
+};
+
 function createCssTokens(palette: AppearancePalette): Record<string, string> {
   const { colors, effects, motion, typography } = palette;
   const purple = colors.purple ?? {
@@ -303,6 +323,7 @@ function createCssTokens(palette: AppearancePalette): Record<string, string> {
     '--bf-appearance-token-flowchat-code-block-pad-x': '0.75rem',
     '--bf-appearance-token-flowchat-link-color': palette.type === 'dark' ? '#60a5fa' : '#0969da',
     '--bf-appearance-token-flowchat-link-hover-color': palette.type === 'dark' ? '#93c5fd' : '#0550ae',
+    '--bf-appearance-token-flowchat-user-text-color': FLOWCHAT_USER_TEXT_COLOR[palette.id] ?? colors.text.primary,
     '--bf-appearance-token-tool-card-font-mono': typography.font.mono,
     '--bf-appearance-token-tool-card-header-pad-y': '0.44rem',
     '--bf-appearance-token-tool-card-header-pad-right': '0.625rem',

@@ -75,6 +75,15 @@
       "reevaluateWhen": "Reevaluate when the dark Appearance overlay ladder is redesigned with focused surface-state screenshots."
     },
     {
+      "root": "src/web-ui/src",
+      "domain": "appearanceProjection",
+      "key": "#b4a0fc <-> #b39dff",
+      "decision": "keep",
+      "owner": "src/web-ui/src/infrastructure/appearance/builtins/buildBuiltinAppearance.ts",
+      "reason": "Both are flow chat user-voice text colors for the Dark and Midnight appearances. Each is a lifted variant of its own palette purple (#8b5cf6 and #9c78ff) so the dark family shares a consistent 'user voice = purple' language; the two themes never render side by side.",
+      "reevaluateWhen": "Only if a visual review decides the dark-family themes need distinct user-voice hues."
+    },
+    {
       "root": "BitFun-Installer/src",
       "domain": "themePreset",
       "key": "#0e0e10 <-> #121214",

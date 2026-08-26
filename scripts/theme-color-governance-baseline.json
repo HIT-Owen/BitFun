@@ -171,7 +171,7 @@
       "max": 0
     },
     "colorDomainNearPairs.nearTotal": {
-      "max": 8
+      "max": 9
     },
     "colorDomainNearPairs.themePreset.indistinguishableTotal": {
       "max": 0
@@ -315,7 +315,7 @@
       "max": 0
     },
     "colorDomainNearPairs.appearanceProjection.nearTotal": {
-      "max": 3
+      "max": 4
     },
     "colorDomainNearPairs.appearanceDomain.indistinguishableTotal": {
       "max": 0
@@ -324,10 +324,10 @@
       "max": 0
     },
     "colorDomainScopes.appearanceProjection.occurrences": {
-      "max": 124
+      "max": 132
     },
     "colorDomainScopes.appearanceProjection.uniqueColors": {
-      "max": 81
+      "max": 89
     },
     "colorDomainScopes.appearanceDomain.occurrences": {
       "max": 0
