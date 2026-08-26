@@ -26,6 +26,16 @@
 Language Select → Options → Progress → Model Setup → Theme Setup
 ```
 
+## 图标
+
+安装器的可执行文件/bundle 图标与窗口 logo 统一取自品牌图标套件（而非旧的 BitFun 资源）：
+
+- `src-tauri/icons/icon.ico` ← `src/apps/desktop/icons/yuantu-harness-brand-icons/installer/installer.ico`
+- `src-tauri/icons/icon.png` ← `src/apps/desktop/icons/yuantu-harness-brand-icons/installer/installer-512.png`
+- `src/Logo-ICON.png` ← `src/apps/desktop/icons/yuantu-harness-brand-icons/installer/installer-256.png`
+
+重新打包安装器时请与该套件保持一致，不要重新引入旧 BitFun 图标。`icon.icns` 不参与（安装器仅面向 Windows/NSIS）。
+
 ## 命令
 
 这些是命令参考，不是默认预检清单。PR 范围请以下方 Verification 为准。

@@ -26,6 +26,19 @@ Install flow:
 Language Select → Options → Progress → Model Setup → Theme Setup
 ```
 
+## Icons
+
+The installer's executable/bundle icon and in-window logo are sourced from the
+brand icon kit (not the legacy BitFun assets):
+
+- `src-tauri/icons/icon.ico` ← `src/apps/desktop/icons/yuantu-harness-brand-icons/installer/installer.ico`
+- `src-tauri/icons/icon.png` ← `src/apps/desktop/icons/yuantu-harness-brand-icons/installer/installer-512.png`
+- `src/Logo-ICON.png` ← `src/apps/desktop/icons/yuantu-harness-brand-icons/installer/installer-256.png`
+
+When repackaging the installer, keep these in sync with that kit and do not
+reintroduce the old BitFun icon. `icon.icns` is unused (the installer targets
+Windows/NSIS only).
+
 ## Commands
 
 These are command references, not the default precheck list. Use Verification
