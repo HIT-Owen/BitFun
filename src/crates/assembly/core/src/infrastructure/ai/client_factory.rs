@@ -9,7 +9,7 @@
 use crate::infrastructure::ai::reasoning_catalog::{
     apply_default_reasoning_preset, apply_selected_reasoning_preset,
     load_models_dev_reasoning_catalog, project_model_reasoning_catalog,
-    resolve_default_reasoning_preset,
+    reasoning_preset_effort_value, resolve_default_reasoning_preset, resolve_reasoning_preset,
 };
 use crate::infrastructure::ai::{build_stream_options_for_model, AIClient};
 #[cfg(feature = "subscription-auth")]
@@ -17,7 +17,10 @@ use crate::infrastructure::subscription_auth::{
     self, OpenCodePlan as AdapterOpenCodePlan, SubscriptionHttpOptions,
     SubscriptionProvider as AdapterProvider,
 };
-use crate::service::config::types::{model_runtime_binding_fingerprint, AuthConfig};
+use crate::service::config::types::{
+    automatic_max_output_tokens_for_effort, model_runtime_binding_fingerprint, AIModelConfig,
+    AuthConfig, DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS,
+};
 #[cfg(feature = "subscription-auth")]
 use crate::service::config::types::{OpenCodePlan, SubscriptionProvider};
 use crate::service::config::{get_global_config_service, ConfigService};
@@ -25,6 +28,7 @@ use crate::util::errors::{BitFunError, BitFunResult};
 use crate::util::types::AIConfig;
 use anyhow::{anyhow, Result};
 use bitfun_ai_adapters::resolve_required_model_selector;
+use bitfun_core_types::{ReasoningCatalogProjection, ReasoningPresetDescriptor};
 use log::{debug, info, warn};
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, RwLock};
@@ -82,6 +86,50 @@ fn functional_agent_model_selector<'a>(
         .get(func_agent_name)
         .map(String::as_str)
         .unwrap_or("fast")
+}
+
+/// Session preset effort wins over the model default preset effort, matching
+/// request-build precedence where the selected preset overrides the model
+/// default.
+fn effective_reasoning_effort(
+    projection: &ReasoningCatalogProjection,
+    session_preset: Option<&ReasoningPresetDescriptor>,
+) -> Option<String> {
+    reasoning_preset_effort_value(session_preset)
+        .or_else(|| reasoning_preset_effort_value(resolve_default_reasoning_preset(projection)))
+}
+
+/// Keeps an automatically derived request output limit aligned with the
+/// effective reasoning effort after a session-level preset selection.
+///
+/// Session presets can raise the effort (model default `medium` -> session
+/// `xhigh`) or lower it; without realignment the derived client would keep
+/// sending the default-effort output ceiling and long thinking phases could
+/// be truncated again. Explicit model `max_tokens` configuration is never
+/// touched.
+fn align_automatic_output_limit_with_effort(
+    model: &AIModelConfig,
+    projection: &ReasoningCatalogProjection,
+    session_preset: Option<&ReasoningPresetDescriptor>,
+    client: AIClient,
+) -> AIClient {
+    if model.max_tokens.is_some() {
+        return client;
+    }
+    let effort = effective_reasoning_effort(projection, session_preset);
+    let context_window = model
+        .context_window
+        .unwrap_or(DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS);
+    let aligned_max_tokens =
+        automatic_max_output_tokens_for_effort(context_window, effort.as_deref());
+    if client.config.max_tokens == Some(aligned_max_tokens) {
+        return client;
+    }
+    info!(
+        "Realigning automatic output limit with session reasoning effort: model_id={}, context_window={}, effort={:?}, max_tokens={}",
+        model.id, context_window, effort, aligned_max_tokens
+    );
+    client.with_max_tokens(Some(aligned_max_tokens))
 }
 
 impl AIClientFactory {
@@ -184,6 +232,7 @@ impl AIClientFactory {
             .ok_or_else(|| anyhow!("Model configuration not found: {}", model_id))?;
         let models_dev = load_models_dev_reasoning_catalog().await;
         let projection = project_model_reasoning_catalog(model, models_dev.catalog.as_deref());
+        let session_preset = resolve_reasoning_preset(&projection, reasoning_preset);
         let Some(client) = apply_selected_reasoning_preset(&client, &projection, reasoning_preset)
         else {
             warn!(
@@ -192,6 +241,8 @@ impl AIClientFactory {
             );
             return Ok(client);
         };
+        let client =
+            align_automatic_output_limit_with_effort(model, &projection, session_preset, client);
 
         Ok(Arc::new(client))
     }
@@ -320,6 +371,22 @@ impl AIClientFactory {
 
         let mut ai_config = AIConfig::try_from(model_config.clone())
             .map_err(|e| anyhow!("AI configuration conversion failed: {}", e))?;
+        // When no explicit output limit is configured, keep the automatic
+        // ceiling aligned with the model's default reasoning effort so long
+        // thinking phases are not truncated by the quarter-of-context ladder.
+        // Explicit `max_tokens` configuration always wins.
+        if model_config.max_tokens.is_none() {
+            let effort = reasoning_preset_effort_value(default_reasoning_preset.as_ref());
+            let effort_aware_max_tokens =
+                automatic_max_output_tokens_for_effort(ai_config.context_window, effort.as_deref());
+            if ai_config.max_tokens != Some(effort_aware_max_tokens) {
+                debug!(
+                    "Adjusting automatic output limit for reasoning effort: model_id={}, context_window={}, effort={:?}, max_tokens={}",
+                    normalized_model_id, ai_config.context_window, effort, effort_aware_max_tokens
+                );
+                ai_config.max_tokens = Some(effort_aware_max_tokens);
+            }
+        }
         let skip_ssl_verify = ai_config.skip_ssl_verify;
         let proxy_config = if global_config.ai.proxy.enabled {
             Some(global_config.ai.proxy.clone())
@@ -772,5 +839,96 @@ mod tests {
             .expect("stale fast should fall back to primary"),
             "model-primary"
         );
+    }
+
+    mod reasoning_output_alignment {
+        use super::super::effective_reasoning_effort;
+        use bitfun_core_types::{
+            ReasoningCapabilityStatus, ReasoningCatalogProjection, ReasoningPresetAction,
+            ReasoningPresetDescriptor, ReasoningPresetSource,
+        };
+
+        fn effort_preset(id: &str, value: &str) -> ReasoningPresetDescriptor {
+            ReasoningPresetDescriptor {
+                id: id.to_string(),
+                label: id.to_string(),
+                order: 0,
+                actions: vec![ReasoningPresetAction::Effort {
+                    value: value.to_string(),
+                }],
+                source: ReasoningPresetSource::ModelsDev,
+                execution_provider: None,
+                execution_model: None,
+            }
+        }
+
+        fn toggle_only_preset(id: &str) -> ReasoningPresetDescriptor {
+            ReasoningPresetDescriptor {
+                id: id.to_string(),
+                label: id.to_string(),
+                order: 1,
+                actions: vec![ReasoningPresetAction::Toggle { enabled: true }],
+                source: ReasoningPresetSource::ModelConfig,
+                execution_provider: None,
+                execution_model: None,
+            }
+        }
+
+        fn projection(
+            default_preset: Option<&str>,
+            presets: Vec<ReasoningPresetDescriptor>,
+        ) -> ReasoningCatalogProjection {
+            ReasoningCatalogProjection {
+                status: ReasoningCapabilityStatus::Known,
+                default_preset: default_preset.map(str::to_string),
+                presets,
+                unavailable_presets: Vec::new(),
+            }
+        }
+
+        #[test]
+        fn session_preset_effort_overrides_model_default() {
+            let projection = projection(
+                Some("balanced"),
+                vec![
+                    effort_preset("balanced", "medium"),
+                    effort_preset("deep", "xhigh"),
+                ],
+            );
+            let session = projection.presets.last().unwrap();
+
+            assert_eq!(
+                effective_reasoning_effort(&projection, Some(session)),
+                Some("xhigh".to_string())
+            );
+        }
+
+        #[test]
+        fn missing_session_preset_falls_back_to_model_default_effort() {
+            let projection = projection(Some("deep"), vec![effort_preset("deep", "xhigh")]);
+
+            assert_eq!(
+                effective_reasoning_effort(&projection, None),
+                Some("xhigh".to_string())
+            );
+        }
+
+        #[test]
+        fn preset_without_effort_action_contributes_nothing() {
+            let projection = projection(
+                Some("thinking"),
+                vec![toggle_only_preset("thinking"), effort_preset("fast", "low")],
+            );
+            let session = projection.presets.first().unwrap();
+
+            assert_eq!(effective_reasoning_effort(&projection, Some(session)), None);
+        }
+
+        #[test]
+        fn model_without_any_effort_information_resolves_to_none() {
+            let projection = projection(None, vec![]);
+
+            assert_eq!(effective_reasoning_effort(&projection, None), None);
+        }
     }
 }

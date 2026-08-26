@@ -8,14 +8,15 @@ use bitfun_ai_adapters::models_dev::{
     project_reasoning_catalog_with_limit_and_auto_binding, ModelsDevCatalog,
 };
 #[cfg(feature = "model-catalog")]
+use bitfun_core_types::ReasoningCatalogProjectionRequest;
+#[cfg(feature = "model-catalog")]
 use bitfun_core_types::{
     ModelsDevCatalogSource, ModelsDevCatalogStatus, ModelsDevRefreshResult, ModelsDevRefreshStatus,
 };
 use bitfun_core_types::{
-    ReasoningCatalogBinding, ReasoningCatalogProjection, ReasoningPresetDescriptor,
+    ReasoningCatalogBinding, ReasoningCatalogProjection, ReasoningPresetAction,
+    ReasoningPresetDescriptor,
 };
-#[cfg(feature = "model-catalog")]
-use bitfun_core_types::ReasoningCatalogProjectionRequest;
 #[cfg(feature = "model-catalog")]
 use bitfun_events::{AIModelCatalogUpdatedEvent, AI_MODEL_CATALOG_UPDATED_EVENT};
 #[cfg(feature = "model-catalog")]
@@ -403,6 +404,29 @@ pub(crate) fn resolve_default_reasoning_preset(
         .default_preset
         .as_deref()
         .and_then(|preset_id| resolve_reasoning_preset(projection, preset_id))
+}
+
+/// Extracts the canonical effort value (`low`/`medium`/`high`/`xhigh`/`max`,
+/// lowercased) from one reasoning preset descriptor, if the preset carries an
+/// effort action. Adapter-specific normalizations (for example DeepSeek
+/// `xhigh` -> `max`) happen later at request-build time and do not affect
+/// this canonical value.
+pub(crate) fn reasoning_preset_effort_value(
+    preset: Option<&ReasoningPresetDescriptor>,
+) -> Option<String> {
+    preset.and_then(|preset| {
+        preset.actions.iter().find_map(|action| match action {
+            ReasoningPresetAction::Effort { value } => {
+                let value = value.trim();
+                if value.is_empty() {
+                    None
+                } else {
+                    Some(value.to_ascii_lowercase())
+                }
+            }
+            _ => None,
+        })
+    })
 }
 
 pub(crate) fn apply_default_reasoning_preset(

@@ -96,6 +96,16 @@ impl ModelRoundLifecycle {
 
 impl RoundExecutor {
     const MAX_STREAM_ATTEMPTS: usize = 10;
+    /// Total stream attempts allowed for empty-output stalls
+    /// (`no_effective_output`). These failures are usually not transient — a
+    /// common deterministic case is reasoning truncated by the model output
+    /// token limit before any tool call or answer text is produced — so blind
+    /// same-input retries are capped low instead of burning the full stream
+    /// retry budget. After this budget is exhausted the thinking-only result
+    /// flows to the execution engine, which backfills the assistant reasoning
+    /// message, injects the thinking-only rescue reminder, and continues with
+    /// the next round.
+    const MAX_NO_EFFECTIVE_OUTPUT_ATTEMPTS: usize = 3;
     const RETRY_BASE_DELAY_MS: u64 = 500;
     const RATE_LIMIT_RETRY_BASE_DELAY_MS: u64 = 2_000;
     const MAX_EXPONENTIAL_DELAY_MS: u64 = 30_000;
@@ -104,6 +114,20 @@ impl RoundExecutor {
 
     fn has_user_visible_assistant_text(text: &str) -> bool {
         !text.trim().is_empty()
+    }
+
+    /// Whether another same-input retry is allowed for an empty-output stall.
+    ///
+    /// The stall-specific budget is much smaller than the transport retry
+    /// budget: re-sending identical messages rarely changes a deterministic
+    /// outcome, so after `MAX_NO_EFFECTIVE_OUTPUT_ATTEMPTS` the round returns
+    /// and the engine's thinking-only rescue takes over.
+    fn should_retry_no_effective_output(
+        no_effective_output_attempts: usize,
+        local_attempt_index: usize,
+    ) -> bool {
+        no_effective_output_attempts + 1 < Self::MAX_NO_EFFECTIVE_OUTPUT_ATTEMPTS
+            && local_attempt_index < Self::MAX_STREAM_ATTEMPTS - 1
     }
 
     fn retry_diagnostic(
@@ -348,6 +372,7 @@ impl RoundExecutor {
         let allow_normal_tool_json_repair = global_config.ai.allow_tool_json_repair;
         let max_attempts = Self::MAX_STREAM_ATTEMPTS;
         let mut local_attempt_index = 0usize;
+        let mut no_effective_output_attempts = 0usize;
         let (stream_result, send_to_stream_ms, stream_processing_ms, final_trace_handle) = loop {
             let attempt_number = lifecycle.begin_attempt();
             let attempt_id = format!("{round_id}:attempt:{attempt_number}");
@@ -739,7 +764,13 @@ impl RoundExecutor {
                         )));
                     }
 
-                    if no_effective_output && local_attempt_index < max_attempts - 1 {
+                    if no_effective_output
+                        && Self::should_retry_no_effective_output(
+                            no_effective_output_attempts,
+                            local_attempt_index,
+                        )
+                    {
+                        no_effective_output_attempts += 1;
                         self.record_retry_diagnostic(
                             &context,
                             &round_id,
@@ -761,12 +792,14 @@ impl RoundExecutor {
                         .await;
                         let delay_ms = Self::retry_delay_ms(local_attempt_index);
                         warn!(
-                            "Retrying stream because no effective output was received: session_id={}, round_id={}, round_attempt={}, local_retry={}/{}, delay_ms={}",
+                            "Retrying stream because no effective output was received: session_id={}, round_id={}, round_attempt={}, local_retry={}/{}, stall_retry={}/{}, delay_ms={}",
                             context.session_id,
                             round_id,
                             attempt_number,
                             local_attempt_index + 1,
                             max_attempts,
+                            no_effective_output_attempts,
+                            Self::MAX_NO_EFFECTIVE_OUTPUT_ATTEMPTS,
                             delay_ms
                         );
                         Self::sleep_with_cancellation(delay_ms, &cancel_token).await?;
@@ -786,6 +819,17 @@ impl RoundExecutor {
                                 .partial_recovery_reason
                                 .as_deref()
                                 .unwrap_or("unknown")
+                        );
+                    }
+
+                    if no_effective_output {
+                        warn!(
+                            "No-effective-output retry budget exhausted; returning thinking-only result for engine rescue continuation: session_id={}, round_id={}, stall_attempts={}, total_attempts={}/{}",
+                            context.session_id,
+                            round_id,
+                            no_effective_output_attempts + 1,
+                            local_attempt_index + 1,
+                            max_attempts
                         );
                     }
 
@@ -1687,6 +1731,28 @@ mod tests {
         assert_eq!(lifecycle.begin_attempt(), 2);
         assert_eq!(lifecycle.attempts_started(), 2);
         assert_eq!(lifecycle.round_id, round_id);
+    }
+
+    #[test]
+    fn no_effective_output_retries_stop_at_the_stall_budget() {
+        // First attempt failed -> one retry left before the stall budget of 3
+        // total attempts is exhausted.
+        assert!(RoundExecutor::should_retry_no_effective_output(0, 0));
+        assert!(RoundExecutor::should_retry_no_effective_output(1, 1));
+        // Two retries consumed: return the thinking-only result so the
+        // engine's rescue reminder takes over instead of re-sending again.
+        assert!(!RoundExecutor::should_retry_no_effective_output(2, 2));
+        assert!(!RoundExecutor::should_retry_no_effective_output(5, 5));
+    }
+
+    #[test]
+    fn no_effective_output_retries_respect_the_transport_budget() {
+        // The overall stream attempt budget still bounds stall retries when
+        // earlier attempts were consumed by transport errors.
+        assert!(!RoundExecutor::should_retry_no_effective_output(
+            0,
+            RoundExecutor::MAX_STREAM_ATTEMPTS - 1
+        ));
     }
 
     #[tokio::test]

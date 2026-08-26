@@ -1339,18 +1339,50 @@ pub type AgentSubagentOverrideConfig = HashMap<String, ParentSubagentOverrideCon
 pub const DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS: u32 = 128_128;
 pub const MIN_MODEL_CONTEXT_WINDOW_TOKENS: u32 = 32_000;
 pub const MAX_CONFIGURED_OUTPUT_TOKENS_RATIO_PERCENT: u32 = 40;
-const AUTOMATIC_MAX_OUTPUT_TOKEN_TIERS: [u32; 5] = [8_000, 16_000, 24_000, 32_000, 64_000];
+const AUTOMATIC_MAX_OUTPUT_TOKEN_TIERS: [u32; 6] = [8_000, 16_000, 24_000, 32_000, 48_000, 64_000];
+
+/// Reasoning effort values whose long thinking phases justify a larger
+/// automatic output reserve. Reasoning tokens count against the request
+/// output limit on OpenAI-compatible providers, so a quarter-of-context cap
+/// can truncate thinking before any tool call or answer is produced.
+const ELEVATED_REASONING_OUTPUT_EFFORTS: [&str; 3] = ["high", "xhigh", "max"];
+
+/// Whether one reasoning effort selection deserves the elevated automatic
+/// output reserve. `None` (no explicit reasoning preset/effort configured)
+/// keeps the conservative default ladder.
+pub fn is_elevated_reasoning_output_effort(effort: Option<&str>) -> bool {
+    effort
+        .map(str::trim)
+        .filter(|effort| !effort.is_empty())
+        .is_some_and(|effort| {
+            ELEVATED_REASONING_OUTPUT_EFFORTS.contains(&effort.to_ascii_lowercase().as_str())
+        })
+}
 
 /// Chooses the largest supported output tier that does not exceed one quarter
 /// of the model context window.
 pub fn automatic_max_output_tokens(context_window: u32) -> u32 {
-    let quarter_context = context_window / 4;
+    automatic_max_output_tokens_for_effort(context_window, None)
+}
+
+/// Effort-aware variant of [`automatic_max_output_tokens`].
+///
+/// Default (no or non-elevated effort): largest tier within one quarter of the
+/// context window. Elevated efforts (`high`/`xhigh`/`max`) may use the same
+/// 40%-of-context bound accepted for explicit `max_tokens` configuration so
+/// long thinking phases are not truncated by the automatic ceiling.
+pub fn automatic_max_output_tokens_for_effort(context_window: u32, effort: Option<&str>) -> u32 {
+    let budget_limit = if is_elevated_reasoning_output_effort(effort) {
+        context_window.saturating_mul(MAX_CONFIGURED_OUTPUT_TOKENS_RATIO_PERCENT) / 100
+    } else {
+        context_window / 4
+    };
     AUTOMATIC_MAX_OUTPUT_TOKEN_TIERS
         .iter()
         .rev()
         .copied()
-        .find(|tier| *tier <= quarter_context)
-        .unwrap_or(quarter_context)
+        .find(|tier| *tier <= budget_limit)
+        .unwrap_or(budget_limit)
 }
 
 /// A configured output cap may use up to 40% of the model context window.
@@ -3010,5 +3042,82 @@ mod tests {
         let serialized =
             serde_json::to_value(&config).expect("review team auxiliary config should serialize");
         assert!(serialized["review_teams"]["rate_limit_status"].is_null());
+    }
+}
+
+#[cfg(test)]
+mod automatic_max_output_tokens_tests {
+    use super::{
+        automatic_max_output_tokens, automatic_max_output_tokens_for_effort,
+        is_elevated_reasoning_output_effort,
+    };
+
+    #[test]
+    fn default_ladder_stays_within_quarter_of_context() {
+        // Small windows are unchanged by the effort-aware work.
+        assert_eq!(automatic_max_output_tokens(32_000), 8_000);
+        assert_eq!(automatic_max_output_tokens(128_000), 32_000);
+        // The added 48K tier only fills windows whose quarter falls in
+        // [48K, 64K); the tier still never exceeds context/4.
+        assert_eq!(automatic_max_output_tokens(192_000), 48_000);
+        assert_eq!(automatic_max_output_tokens(250_000), 48_000);
+        assert_eq!(automatic_max_output_tokens(256_000), 64_000);
+    }
+
+    #[test]
+    fn elevated_efforts_allow_up_to_configured_output_ratio() {
+        assert_eq!(
+            automatic_max_output_tokens_for_effort(250_000, Some("xhigh")),
+            64_000
+        );
+        assert_eq!(
+            automatic_max_output_tokens_for_effort(200_000, Some("high")),
+            64_000
+        );
+        assert_eq!(
+            automatic_max_output_tokens_for_effort(160_000, Some("max")),
+            64_000
+        );
+        // Mid-size windows climb to the 48K tier instead of jumping straight
+        // to 64K.
+        assert_eq!(
+            automatic_max_output_tokens_for_effort(150_000, Some("xhigh")),
+            48_000
+        );
+        // Windows too small for elevation keep the quarter ladder.
+        assert_eq!(
+            automatic_max_output_tokens_for_effort(128_000, Some("xhigh")),
+            48_000
+        );
+        assert_eq!(
+            automatic_max_output_tokens_for_effort(64_000, Some("high")),
+            24_000
+        );
+    }
+
+    #[test]
+    fn non_elevated_or_missing_efforts_keep_default_behavior() {
+        for effort in [
+            None,
+            Some(""),
+            Some("low"),
+            Some("medium"),
+            Some("minimal"),
+            Some("none"),
+            Some("off"),
+        ] {
+            assert_eq!(
+                automatic_max_output_tokens_for_effort(250_000, effort),
+                automatic_max_output_tokens(250_000)
+            );
+        }
+    }
+
+    #[test]
+    fn effort_matching_is_case_insensitive_and_trimmed() {
+        assert!(is_elevated_reasoning_output_effort(Some(" XHigh ")));
+        assert!(is_elevated_reasoning_output_effort(Some("MAX")));
+        assert!(!is_elevated_reasoning_output_effort(Some("medium")));
+        assert!(!is_elevated_reasoning_output_effort(None));
     }
 }
