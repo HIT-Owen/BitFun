@@ -62,6 +62,17 @@ pnpm run check:core-boundaries     # Cargo / 模块 owner 边界
 Web UI、mobile、CLI、Desktop、Installer、打包及 focused test 命令由最近的本地指南维护；
 完整脚本注册表仍见 [`package.json`](package.json)。
 
+### desktop:dev 使用约定
+
+- `pnpm run desktop:dev` 是常驻开发进程，不是每次改动后要重新执行的验证步骤。
+  每个开发会话启动一次即可：前端改动经 Vite 热更新，Rust 改动自动重编译并重启。
+  仅在进程退出，或修改了构建配置、依赖清单（`Cargo.toml`、`package.json`）后才需要重启。
+- 人工测试前先分层验证：按最近的 `AGENTS.md` 执行针对性检查（格式、测试、边界检查），
+  再在常驻的 `desktop:dev` 进程中确认实际行为。
+- 人工测试的分级：小功能更新使用常驻的 `desktop:dev` 进程验证；大版本更新执行一次
+  打包构建（`scripts/desktop-tauri-build.mjs`），并在安装版上完整验证一遍——dev 模式与
+  打包产物在资源加载、路径、缓存行为上可能存在差异。
+
 ## 全局规则
 
 ### 流程产物

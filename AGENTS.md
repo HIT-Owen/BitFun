@@ -72,6 +72,23 @@ For Web UI, mobile, CLI, Desktop, Installer, packaging, and focused test
 commands, use the nearest local guide. The full script registry remains in
 [`package.json`](package.json).
 
+### desktop:dev usage
+
+- `pnpm run desktop:dev` is a long-running development process, not a
+  verification step to re-run after each change. Start it once per
+  development session: frontend edits hot-reload via Vite, and Rust edits
+  trigger an automatic rebuild and restart. Restart it only when the process
+  dies or after changing build configuration or dependency manifests
+  (`Cargo.toml`, `package.json`).
+- Verify changes in layers before manual testing: run the focused checks from
+  the nearest `AGENTS.md` (format, tests, boundary checks) first, then use the
+  running `desktop:dev` process for human confirmation of the behavior.
+- Manual testing split: use the running `desktop:dev` process for small
+  feature updates; for major version updates, run a packaged desktop build
+  (`scripts/desktop-tauri-build.mjs`) and verify once on the installed build,
+  because dev mode and the packaged artifact can differ in resource loading,
+  paths, and cache behavior.
+
 ## Global rules
 
 ### Git workflow
