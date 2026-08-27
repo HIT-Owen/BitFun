@@ -230,8 +230,25 @@ const EDITOR_OPENABLE_BASENAMES = new Set([
   'readme.txt',
 ]);
 
-const localImageDataUrlCache = new Map<string, string>();
-const localImageRequestCache = new Map<string, Promise<string>>();
+interface LocalImageCacheEntry {
+  dataUrl: string;
+  /** File mtime snapshot captured when the content was read (0 = unknown). */
+  modified: number;
+  /** File size snapshot captured when the content was read (0 = unknown). */
+  size: number;
+  /** Last time this entry was validated against the file on disk. */
+  validatedAt: number;
+}
+
+const localImageDataUrlCache = new Map<string, LocalImageCacheEntry>();
+const localImageRequestCache = new Map<string, Promise<LocalImageCacheEntry>>();
+// Workspace files (e.g. an SVG the agent just rewrote) can change while the
+// chat pane is open, so cached entries are revalidated against the file's
+// mtime/size. The throttle keeps virtualized-list remounts from issuing a
+// stat IPC per image on every scroll tick; the entry cap bounds memory since
+// data URLs can be large.
+export const LOCAL_IMAGE_REVALIDATE_THROTTLE_MS = 3000;
+const LOCAL_IMAGE_CACHE_MAX_ENTRIES = 100;
 
 const sanitizeSchema = {
   ...defaultSchema,
@@ -459,11 +476,11 @@ function getLocalImageCacheKey(localPath: string, remoteConnectionId?: string): 
 async function getLocalImageDataUrl(
   localPath: string,
   remoteConnectionId?: string,
-): Promise<string> {
+): Promise<LocalImageCacheEntry> {
   const cacheKey = getLocalImageCacheKey(localPath, remoteConnectionId);
-  const cachedDataUrl = localImageDataUrlCache.get(cacheKey);
-  if (cachedDataUrl) {
-    return cachedDataUrl;
+  const cachedEntry = localImageDataUrlCache.get(cacheKey);
+  if (cachedEntry) {
+    return cachedEntry;
   }
 
   const pendingRequest = localImageRequestCache.get(cacheKey);
@@ -477,10 +494,37 @@ async function getLocalImageDataUrl(
       'base64',
       remoteConnectionId,
     );
-    const dataUrl = `data:${getMimeType(localPath)};base64,${base64Content}`;
-    localImageDataUrlCache.set(cacheKey, dataUrl);
+    // Read the metadata after the content so the stored stamp reflects the
+    // bytes we just loaded; a later write bumps the mtime and triggers
+    // revalidation on the next mount. Remote workspaces have no local stat,
+    // so those entries are treated as immutable for the session.
+    let modified = 0;
+    let size = 0;
+    if (!remoteConnectionId) {
+      try {
+        const metadata = await workspaceAPI.getFileMetadata(localPath);
+        modified = metadata.modified;
+        size = metadata.size;
+      } catch {
+        // Unknown metadata: entry is served as-is and re-checked (re-read)
+        // on a later mount.
+      }
+    }
+    const entry: LocalImageCacheEntry = {
+      dataUrl: `data:${getMimeType(localPath)};base64,${base64Content}`,
+      modified,
+      size,
+      validatedAt: Date.now(),
+    };
+    if (!localImageDataUrlCache.has(cacheKey) && localImageDataUrlCache.size >= LOCAL_IMAGE_CACHE_MAX_ENTRIES) {
+      const oldestKey = localImageDataUrlCache.keys().next().value;
+      if (oldestKey !== undefined) {
+        localImageDataUrlCache.delete(oldestKey);
+      }
+    }
+    localImageDataUrlCache.set(cacheKey, entry);
     localImageRequestCache.delete(cacheKey);
-    return dataUrl;
+    return entry;
   })().catch((error) => {
     localImageRequestCache.delete(cacheKey);
     throw error;
@@ -519,7 +563,7 @@ const MarkdownImage: React.FC<MarkdownImageProps> = ({
       return rawSrc;
     }
 
-    return localImageDataUrlCache.get(cacheKey) || LOCAL_IMAGE_PLACEHOLDER;
+    return localImageDataUrlCache.get(cacheKey)?.dataUrl || LOCAL_IMAGE_PLACEHOLDER;
   });
   const [loadState, setLoadState] = useState<'idle' | 'loading' | 'loaded' | 'error'>(() => {
     if (!localPath || !cacheKey) {
@@ -536,11 +580,52 @@ const MarkdownImage: React.FC<MarkdownImageProps> = ({
       return;
     }
 
-    const cachedDataUrl = localImageDataUrlCache.get(cacheKey);
-    if (cachedDataUrl) {
-      setResolvedSrc(cachedDataUrl);
+    const cachedEntry = localImageDataUrlCache.get(cacheKey);
+    if (cachedEntry) {
+      setResolvedSrc(cachedEntry.dataUrl);
       setLoadState('loaded');
-      return;
+      if (remoteConnectionId) {
+        return;
+      }
+
+      const now = Date.now();
+      if (now - cachedEntry.validatedAt < LOCAL_IMAGE_REVALIDATE_THROTTLE_MS) {
+        return;
+      }
+
+      // Cheap revalidation: a stat IPC is far cheaper than re-reading the
+      // full base64 content. If the file changed on disk, drop the stale
+      // entry and reload it.
+      let cancelled = false;
+      void workspaceAPI.getFileMetadata(localPath)
+        .then((metadata) => {
+          if (cancelled) {
+            return null;
+          }
+          if (metadata.modified === cachedEntry.modified && metadata.size === cachedEntry.size) {
+            cachedEntry.validatedAt = Date.now();
+            return null;
+          }
+
+          localImageDataUrlCache.delete(cacheKey);
+          return getLocalImageDataUrl(localPath, remoteConnectionId);
+        })
+        .then((reloaded) => {
+          if (!cancelled && reloaded) {
+            setResolvedSrc(reloaded.dataUrl);
+            setLoadState('loaded');
+          }
+        })
+        .catch((error) => {
+          // Keep serving the cached image when the stat itself fails.
+          if (!cancelled) {
+            log.warn('Failed to revalidate local markdown image', { path: localPath, error });
+          }
+        });
+
+      return () => {
+        cancelled = true;
+      };
     }
 
     let cancelled = false;
@@ -548,12 +633,12 @@ const MarkdownImage: React.FC<MarkdownImageProps> = ({
     setLoadState('loading');
 
     void getLocalImageDataUrl(localPath, remoteConnectionId)
-      .then((dataUrl) => {
+      .then((entry) => {
         if (cancelled) {
           return;
         }
 
-        setResolvedSrc(dataUrl);
+        setResolvedSrc(entry.dataUrl);
         setLoadState('loaded');
       })
       .catch((error) => {

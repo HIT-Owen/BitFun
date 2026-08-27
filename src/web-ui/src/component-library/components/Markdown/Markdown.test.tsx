@@ -4,12 +4,13 @@ import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { Markdown } from './Markdown';
+import { Markdown, LOCAL_IMAGE_REVALIDATE_THROTTLE_MS } from './Markdown';
 
 const mocks = vi.hoisted(() => ({
   getCurrentWorkspacePath: vi.fn(),
   revealInExplorer: vi.fn(),
   readFileContent: vi.fn(),
+  getFileMetadata: vi.fn(),
   openExternal: vi.fn(),
   renderMath: vi.fn(),
 }));
@@ -21,6 +22,7 @@ vi.mock('../../../infrastructure/api', () => ({
   workspaceAPI: {
     revealInExplorer: (...args: unknown[]) => mocks.revealInExplorer(...args),
     readFileContent: (...args: unknown[]) => mocks.readFileContent(...args),
+    getFileMetadata: (...args: unknown[]) => mocks.getFileMetadata(...args),
   },
   systemAPI: {
     openExternal: (...args: unknown[]) => mocks.openExternal(...args),
@@ -100,10 +102,18 @@ describe('Markdown file links', () => {
     mocks.getCurrentWorkspacePath.mockReset();
     mocks.revealInExplorer.mockReset();
     mocks.readFileContent.mockReset();
+    mocks.getFileMetadata.mockReset();
     mocks.openExternal.mockReset();
     mocks.renderMath.mockReset();
     mocks.getCurrentWorkspacePath.mockResolvedValue(EXAMPLE_WORKSPACE);
     mocks.readFileContent.mockResolvedValue('cmVsdS1wbmc=');
+    mocks.getFileMetadata.mockResolvedValue({
+      path: 'C:/ExampleWorkspace/image.png',
+      modified: 1000,
+      size: 100,
+      isFile: true,
+      isDir: false,
+    });
   });
 
   afterEach(() => {
@@ -376,5 +386,132 @@ describe('Markdown file links', () => {
       'base64',
       'remote-connection-1',
     );
+    // Remote sessions have no local file stat: images are treated as
+    // immutable for the session and never revalidated.
+    expect(mocks.getFileMetadata).not.toHaveBeenCalled();
+  });
+
+  it('reloads a cached local image after the file changes on disk', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      mocks.readFileContent.mockResolvedValue('dmVyc2lvbi0x');
+      mocks.getFileMetadata.mockResolvedValue({
+        path: `${EXAMPLE_WORKSPACE}/chart.svg`,
+        modified: 1000,
+        size: 10,
+        isFile: true,
+        isDir: false,
+      });
+
+      await act(async () => {
+        root.render(
+          <Markdown
+            content={'![Chart](chart.svg)'}
+            basePath={EXAMPLE_WORKSPACE}
+            onFileViewRequest={onFileViewRequest}
+          />,
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(container.querySelector<HTMLImageElement>('img[alt="Chart"]')?.src).toBe(
+        'data:image/svg+xml;base64,dmVyc2lvbi0x',
+      );
+      expect(mocks.readFileContent).toHaveBeenCalledTimes(1);
+
+      // The agent rewrites the file: new mtime, size, and content.
+      mocks.readFileContent.mockResolvedValue('dmVyc2lvbi0y');
+      mocks.getFileMetadata.mockResolvedValue({
+        path: `${EXAMPLE_WORKSPACE}/chart.svg`,
+        modified: 2000,
+        size: 12,
+        isFile: true,
+        isDir: false,
+      });
+
+      // Remount past the revalidation throttle, as virtualized scrolling does.
+      await act(async () => {
+        root.unmount();
+      });
+      act(() => {
+        vi.advanceTimersByTime(LOCAL_IMAGE_REVALIDATE_THROTTLE_MS + 1000);
+      });
+      root = createRoot(container);
+      await act(async () => {
+        root.render(
+          <Markdown
+            content={'![Chart](chart.svg)'}
+            basePath={EXAMPLE_WORKSPACE}
+            onFileViewRequest={onFileViewRequest}
+          />,
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(container.querySelector<HTMLImageElement>('img[alt="Chart"]')?.src).toBe(
+        'data:image/svg+xml;base64,dmVyc2lvbi0y',
+      );
+      expect(mocks.readFileContent).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps serving the cached image while the file is unchanged', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      mocks.readFileContent.mockResolvedValue('dmVyc2lvbi0x');
+      mocks.getFileMetadata.mockResolvedValue({
+        path: `${EXAMPLE_WORKSPACE}/banner.svg`,
+        modified: 1000,
+        size: 10,
+        isFile: true,
+        isDir: false,
+      });
+
+      await act(async () => {
+        root.render(
+          <Markdown
+            content={'![Banner](banner.svg)'}
+            basePath={EXAMPLE_WORKSPACE}
+            onFileViewRequest={onFileViewRequest}
+          />,
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      await act(async () => {
+        root.unmount();
+      });
+      root = createRoot(container);
+
+      // Remount after the throttle window with unchanged mtime/size: the
+      // cached data URL is served and the file is not re-read.
+      act(() => {
+        vi.advanceTimersByTime(LOCAL_IMAGE_REVALIDATE_THROTTLE_MS + 1000);
+      });
+      await act(async () => {
+        root.render(
+          <Markdown
+            content={'![Banner](banner.svg)'}
+            basePath={EXAMPLE_WORKSPACE}
+            onFileViewRequest={onFileViewRequest}
+          />,
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(container.querySelector<HTMLImageElement>('img[alt="Banner"]')?.src).toBe(
+        'data:image/svg+xml;base64,dmVyc2lvbi0x',
+      );
+      expect(mocks.readFileContent).toHaveBeenCalledTimes(1);
+      expect(mocks.getFileMetadata).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
