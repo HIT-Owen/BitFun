@@ -6,6 +6,7 @@
 
 mod compiler;
 
+use bitfun_product_domains::canvas::runtime::BITFUN_CANVAS_SDK_VERSION;
 use bitfun_product_domains::canvas::{
     is_safe_canvas_ref_segment, CanvasArtifact, CanvasCompileResult, CanvasCompiledPayload,
     CanvasDiagnostic, CanvasDiagnosticSeverity, CanvasId, CanvasPortError, CanvasPortErrorKind,
@@ -174,6 +175,38 @@ impl CanvasMemoryStore {
         self.persist_snapshot(&snapshot).await?;
         Ok(snapshot)
     }
+
+    async fn refresh_stale_compiled_payload(
+        &self,
+        snapshot: CanvasSnapshot,
+    ) -> CanvasPortResult<CanvasSnapshot> {
+        let Some(payload) = snapshot.compiled_payload.as_ref() else {
+            return Ok(snapshot);
+        };
+        if payload.sdk_version == BITFUN_CANVAS_SDK_VERSION {
+            return Ok(snapshot);
+        }
+        // Only refresh a payload compiled from the same source revision; a
+        // newer uncompiled source belongs to the normal compile flow.
+        if payload.source_revision != snapshot.source.revision {
+            return Ok(snapshot);
+        }
+
+        let compiled_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_millis() as i64)
+            .unwrap_or(payload.compiled_at);
+        let result = compile_canvas_source(&snapshot.source, compiled_at);
+        match result.payload {
+            Some(payload) => {
+                self.save_compiled_payload(snapshot.artifact.session_id, payload)
+                    .await
+            }
+            // Keep the previous payload and its state; do not drop user data
+            // because a recompile could not parse the retained source.
+            None => Ok(snapshot),
+        }
+    }
 }
 
 fn canvas_backend_error(action: &str, path: &Path, error: std::io::Error) -> CanvasPortError {
@@ -243,7 +276,7 @@ impl CanvasStoragePort for CanvasMemoryStore {
     ) -> CanvasPortFuture<'_, CanvasSnapshot> {
         let store = self.clone();
         Box::pin(async move {
-            if let Some(snapshot) = {
+            let snapshot = if let Some(snapshot) = {
                 let state = store.inner.lock().map_err(|_| {
                     CanvasPortError::new(CanvasPortErrorKind::Backend, "Canvas store lock poisoned")
                 })?;
@@ -252,17 +285,22 @@ impl CanvasStoragePort for CanvasMemoryStore {
                     .get(&Self::key(session_id.clone(), canvas_id.clone()))
                     .cloned()
             } {
-                return Ok(snapshot);
-            }
-
-            if let Some(snapshot) = store
+                snapshot
+            } else if let Some(snapshot) = store
                 .load_persisted_snapshot(&session_id, &canvas_id)
                 .await?
             {
-                return store.cache_snapshot(snapshot).await;
-            }
+                store.cache_snapshot(snapshot).await?
+            } else {
+                return Err(Self::missing(&session_id, &canvas_id));
+            };
 
-            Err(Self::missing(&session_id, &canvas_id))
+            // A persisted payload compiled by an older Canvas compiler stays
+            // behind the current runtime contract. Recompile it from the
+            // retained source so old sessions heal on load instead of
+            // surfacing stale-runtime errors. The original payload is kept
+            // when the recompile fails.
+            store.refresh_stale_compiled_payload(snapshot).await
         })
     }
 
@@ -701,6 +739,102 @@ mod tests {
         assert_eq!(error.kind, CanvasPortErrorKind::InvalidInput);
 
         let _ = std::fs::remove_dir_all(sessions_dir);
+    }
+
+    #[tokio::test]
+    async fn canvas_store_recompiles_stale_sdk_payload_on_load() {
+        let store = CanvasMemoryStore::new();
+        store
+            .save_source(
+                sample_artifact("canvas_1", "session_1"),
+                sample_source("canvas_1"),
+                Vec::new(),
+            )
+            .await
+            .unwrap();
+        store
+            .compile_latest(
+                CanvasSessionId::new("session_1"),
+                CanvasId::new("canvas_1"),
+                2,
+            )
+            .await
+            .unwrap();
+
+        // Simulate a payload produced by an older Canvas compiler.
+        {
+            let mut state = store.inner.lock().unwrap();
+            let key = CanvasMemoryStore::key(
+                CanvasSessionId::new("session_1"),
+                CanvasId::new("canvas_1"),
+            );
+            let snapshot = state.snapshots.get_mut(&key).unwrap();
+            let payload = snapshot.compiled_payload.as_mut().unwrap();
+            payload.sdk_version = "0.0.1-legacy".to_string();
+        }
+
+        let reloaded = store
+            .load_snapshot(CanvasSessionId::new("session_1"), CanvasId::new("canvas_1"))
+            .await
+            .unwrap();
+        let payload = reloaded
+            .compiled_payload
+            .as_ref()
+            .expect("compiled payload should exist");
+        assert_eq!(payload.sdk_version, BITFUN_CANVAS_SDK_VERSION);
+
+        // A repeated load is stable once the payload matches the current SDK.
+        let again = store
+            .load_snapshot(CanvasSessionId::new("session_1"), CanvasId::new("canvas_1"))
+            .await
+            .unwrap();
+        assert_eq!(
+            again.compiled_payload.unwrap().sdk_version,
+            BITFUN_CANVAS_SDK_VERSION
+        );
+    }
+
+    #[tokio::test]
+    async fn canvas_store_keeps_stale_payload_when_source_is_newer() {
+        let store = CanvasMemoryStore::new();
+        store
+            .save_source(
+                sample_artifact("canvas_1", "session_1"),
+                sample_source("canvas_1"),
+                Vec::new(),
+            )
+            .await
+            .unwrap();
+        store
+            .compile_latest(
+                CanvasSessionId::new("session_1"),
+                CanvasId::new("canvas_1"),
+                2,
+            )
+            .await
+            .unwrap();
+
+        // The source advances without a fresh compile: the stored payload
+        // still belongs to the previous revision and must not be refreshed.
+        let mut updated_artifact = sample_artifact("canvas_1", "session_1");
+        updated_artifact.source_revision = CanvasRevision::new("rev_2");
+        let mut updated_source = sample_source("canvas_1");
+        updated_source.revision = CanvasRevision::new("rev_2");
+        updated_source.source =
+            "import { Stack } from 'bitfun/canvas'; export default function C() { return <Stack />; }"
+                .to_string();
+        store
+            .save_source(updated_artifact, updated_source, Vec::new())
+            .await
+            .unwrap();
+
+        let snapshot = store
+            .load_snapshot(CanvasSessionId::new("session_1"), CanvasId::new("canvas_1"))
+            .await
+            .unwrap();
+        let payload = snapshot.compiled_payload.as_ref().unwrap();
+        assert_eq!(payload.source_revision.as_str(), "rev_1");
+        assert_eq!(payload.sdk_version, BITFUN_CANVAS_SDK_VERSION);
     }
 
     #[tokio::test]

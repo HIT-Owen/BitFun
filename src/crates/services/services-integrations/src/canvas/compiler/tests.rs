@@ -757,6 +757,139 @@ export default function Canvas() {
         assert!(html.contains("window.BitfunCanvasRuntime.mount(__BitfunCanvasComponent)"));
         assert!(html.contains("reportRuntimeError"));
     }
+
+    #[test]
+    fn canvas_compiler_compiles_local_top_level_swatch_without_import() {
+        // Regression: a top-level local binding whose name collides with a
+        // Canvas SDK export used to receive a duplicate prelude `const`,
+        // producing `SyntaxError: Identifier 'Swatch' has already been
+        // declared` in the rendered Canvas.
+        let component_js = compile_canvas_component_js(
+            r#"
+const Swatch = ({ color }) => <span>{color}</span>;
+
+export default function Canvas() {
+  return <Swatch color="purple" />;
+}
+"#,
+        )
+        .expect("local Swatch helper should compile");
+
+        assert_eq!(
+            component_js.matches("const Swatch =").count(),
+            1,
+            "{component_js}"
+        );
+        assert!(!component_js.contains("const Swatch = __BitfunCanvasSDK.Swatch"));
+        assert!(component_js.contains("h(Swatch"));
+    }
+
+    #[test]
+    fn canvas_compiler_injects_only_referenced_sdk_exports() {
+        let component_js = compile_canvas_component_js(
+            r#"
+export default function Canvas() {
+  return <Stack gap={4}><Text>Ready</Text></Stack>;
+}
+"#,
+        )
+        .expect("unimported SDK usage should compile");
+
+        assert!(component_js.contains("const Stack = __BitfunCanvasSDK.Stack;"));
+        assert!(component_js.contains("const Text = __BitfunCanvasSDK.Text;"));
+        assert!(
+            !component_js.contains("const Pill = __BitfunCanvasSDK.Pill;"),
+            "unused SDK exports must not be injected: {component_js}"
+        );
+    }
+
+    #[test]
+    fn canvas_compiler_resolves_inner_scope_shadow_without_injection() {
+        let component_js = compile_canvas_component_js(
+            r#"
+function helper() {
+  const Stack = () => 'local';
+  return <Stack />;
+}
+
+export default function Canvas() {
+  return <Text>{String(helper())}</Text>;
+}
+"#,
+        )
+        .expect("inner shadow should compile");
+
+        assert!(!component_js.contains("const Stack = __BitfunCanvasSDK.Stack;"));
+    }
+
+    #[test]
+    fn canvas_compiler_injects_binding_referenced_across_scopes() {
+        let component_js = compile_canvas_component_js(
+            r#"
+function helper() {
+  const Stack = () => 'local';
+  return <Stack />;
+}
+
+export default function Canvas() {
+  return (
+    <Stack>
+      <Text>{String(helper())}</Text>
+    </Stack>
+  );
+}
+"#,
+        )
+        .expect("cross-scope reference should compile");
+
+        assert!(component_js.contains("const Stack = __BitfunCanvasSDK.Stack;"));
+    }
+
+    #[test]
+    fn canvas_compiler_rejects_local_reserved_runtime_binding() {
+        for (binding, name) in [
+            ("function h() { return null; }", "h"),
+            ("const Fragment = () => null;", "Fragment"),
+        ] {
+            let diagnostics = compile_canvas_component_js(&format!(
+                r#"
+{binding}
+
+export default function Canvas() {{
+  return <Text>Ready</Text>;
+}}
+"#
+            ))
+            .expect_err("reserved runtime binding should fail to compile");
+
+            assert!(
+                diagnostics.iter().any(|diagnostic| {
+                    diagnostic.code.as_deref() == Some("canvas.compile.runtime_binding_reserved")
+                        && diagnostic.message.contains(name)
+                }),
+                "{diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn find_duplicate_root_bindings_reports_redeclarations() {
+        let allocator = ::oxc::allocator::Allocator::default();
+        let parse_return = ::oxc::parser::Parser::new(
+            &allocator,
+            "const a = 1;\nconst a = 2;\nfunction b() {}\nfunction b() {}\n",
+            ::oxc::span::SourceType::mjs(),
+        )
+        .parse();
+        assert!(parse_return.diagnostics.is_empty());
+
+        let duplicates = super::analysis::find_duplicate_root_bindings(&parse_return.program.body);
+        let names = duplicates
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["a", "b"]);
+    }
 }
 
 #[cfg(not(feature = "canvas-runtime"))]

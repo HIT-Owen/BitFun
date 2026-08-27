@@ -1,7 +1,7 @@
 use crate::canvas::types::{CanvasCompiledPayload, CanvasDiagnostic, CanvasId, CanvasRevision};
 use serde::{Deserialize, Serialize};
 
-pub const BITFUN_CANVAS_SDK_VERSION: &str = "0.2.0";
+pub const BITFUN_CANVAS_SDK_VERSION: &str = "0.3.0";
 pub const BITFUN_CANVAS_RUNTIME_VERSION: &str = "0.1.0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

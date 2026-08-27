@@ -24,34 +24,62 @@ use super::diagnostics::oxc_diagnostics_to_canvas;
 use super::{compile_error, line_column};
 
 #[cfg(feature = "canvas-runtime")]
-pub(super) fn validate_canvas_import_shadowing(
+pub(super) fn validate_canvas_binding_collisions(
     source: &str,
     analysis: &CanvasModuleAnalysis,
 ) -> Vec<CanvasDiagnostic> {
-    analysis
-        .import_bindings
-        .local_names()
-        .into_iter()
-        .filter_map(|name| {
-            let declaration_offset = analysis.local_binding_offsets.get(&name).copied()?;
-            let (line, column) = line_column(source, declaration_offset);
-            Some(CanvasDiagnostic {
-                severity: CanvasDiagnosticSeverity::Error,
-                category: CanvasDiagnosticCategory::TypeScript,
-                message: format!(
-                    "`{}` is imported from bitfun/canvas and also declared locally",
-                    name
-                ),
-                code: Some("canvas.compile.sdk_name_shadowed".to_string()),
-                line: Some(line),
-                column: Some(column),
-                suggested_fix: Some(format!(
-                    "Remove the local `{}` declaration or rename it; use the imported Canvas SDK component directly.",
-                    name
-                )),
-            })
-        })
-        .collect()
+    let mut diagnostics = Vec::new();
+
+    for name in &analysis.runtime_value_bindings {
+        if !is_reserved_canvas_runtime_binding(name) {
+            continue;
+        }
+        let declaration_offset = analysis
+            .local_binding_offsets
+            .get(name)
+            .copied()
+            .unwrap_or_default();
+        let (line, column) = line_column(source, declaration_offset);
+        diagnostics.push(CanvasDiagnostic {
+            severity: CanvasDiagnosticSeverity::Error,
+            category: CanvasDiagnosticCategory::TypeScript,
+            message: format!("`{name}` is reserved by the Canvas runtime"),
+            code: Some("canvas.compile.runtime_binding_reserved".to_string()),
+            line: Some(line),
+            column: Some(column),
+            suggested_fix: Some(format!(
+                "Rename the local `{name}` declaration; the Canvas runtime injects its own `{name}` binding."
+            )),
+        });
+    }
+
+    diagnostics.extend(
+        analysis
+            .import_bindings
+            .local_names()
+            .into_iter()
+            .filter_map(|name| {
+                let declaration_offset = analysis.local_binding_offsets.get(&name).copied()?;
+                let (line, column) = line_column(source, declaration_offset);
+                Some(CanvasDiagnostic {
+                    severity: CanvasDiagnosticSeverity::Error,
+                    category: CanvasDiagnosticCategory::TypeScript,
+                    message: format!(
+                        "`{}` is imported from bitfun/canvas and also declared locally",
+                        name
+                    ),
+                    code: Some("canvas.compile.sdk_name_shadowed".to_string()),
+                    line: Some(line),
+                    column: Some(column),
+                    suggested_fix: Some(format!(
+                        "Remove the local `{}` declaration or rename it; use the imported Canvas SDK component directly.",
+                        name
+                    )),
+                })
+            }),
+    );
+
+    diagnostics
 }
 
 #[cfg(feature = "canvas-runtime")]
@@ -61,6 +89,11 @@ pub(super) struct CanvasModuleAnalysis {
     import_removal_spans: Vec<(usize, usize)>,
     default_export: Option<CanvasDefaultExport>,
     pub(super) local_binding_offsets: BTreeMap<String, usize>,
+    /// Top-level declarations that produce a runtime value binding
+    /// (functions, classes, variables, enums). Type-only declarations are
+    /// erased by the transform and never collide with injected prelude
+    /// bindings.
+    pub(super) runtime_value_bindings: BTreeSet<String>,
 }
 
 #[cfg(feature = "canvas-runtime")]
@@ -201,6 +234,7 @@ pub(super) fn analyze_canvas_module(
     let mut import_removal_spans = BTreeSet::new();
     let mut default_export = None;
     let mut local_binding_offsets = BTreeMap::new();
+    let mut runtime_value_bindings = BTreeSet::new();
     let mut diagnostics = Vec::new();
     for statement in &parse_return.program.body {
         match statement {
@@ -245,14 +279,28 @@ pub(super) fn analyze_canvas_module(
             }
             Statement::FunctionDeclaration(function) => {
                 collect_function_binding(function, &mut local_binding_offsets);
+                collect_runtime_value_binding(function, &mut runtime_value_bindings);
             }
             Statement::ClassDeclaration(class) => {
                 collect_class_binding(class, &mut local_binding_offsets);
+                if let Some(id) = class.id.as_ref() {
+                    runtime_value_bindings.insert(id.name.to_string());
+                }
             }
             Statement::VariableDeclaration(declaration) => {
                 for declarator in &declaration.declarations {
                     collect_binding_pattern_offsets(&declarator.id, &mut local_binding_offsets);
+                    collect_binding_pattern_names(&declarator.id, &mut runtime_value_bindings);
                 }
+            }
+            Statement::TSEnumDeclaration(declaration) => {
+                local_binding_offsets
+                    .entry(declaration.id.name.to_string())
+                    .or_insert(declaration.id.span.start as usize);
+                runtime_value_bindings.insert(declaration.id.name.to_string());
+            }
+            Statement::ExportNamedDeclaration(declaration) => {
+                collect_exported_value_binding(declaration, &mut runtime_value_bindings);
             }
             _ => {
                 collect_default_exportable_statement_binding(statement, &mut local_binding_offsets);
@@ -266,6 +314,7 @@ pub(super) fn analyze_canvas_module(
             import_removal_spans: import_removal_spans.into_iter().collect(),
             default_export,
             local_binding_offsets,
+            runtime_value_bindings,
         })
     } else {
         Err(diagnostics)
@@ -386,6 +435,252 @@ fn collect_function_binding(
 }
 
 #[cfg(feature = "canvas-runtime")]
+fn collect_runtime_value_binding(
+    function: &Function<'_>,
+    runtime_value_bindings: &mut BTreeSet<String>,
+) {
+    if let Some(id) = function.id.as_ref() {
+        runtime_value_bindings.insert(id.name.to_string());
+    }
+}
+
+#[cfg(feature = "canvas-runtime")]
+fn collect_binding_pattern_names(pattern: &BindingPattern<'_>, names: &mut BTreeSet<String>) {
+    match pattern {
+        BindingPattern::BindingIdentifier(identifier) => {
+            names.insert(identifier.name.to_string());
+        }
+        BindingPattern::ObjectPattern(pattern) => {
+            for property in &pattern.properties {
+                collect_binding_pattern_names(&property.value, names);
+            }
+            if let Some(rest) = pattern.rest.as_ref() {
+                collect_binding_pattern_names(&rest.argument, names);
+            }
+        }
+        BindingPattern::ArrayPattern(pattern) => {
+            for element in pattern.elements.iter().flatten() {
+                collect_binding_pattern_names(element, names);
+            }
+            if let Some(rest) = pattern.rest.as_ref() {
+                collect_binding_pattern_names(&rest.argument, names);
+            }
+        }
+        BindingPattern::AssignmentPattern(pattern) => {
+            collect_binding_pattern_names(&pattern.left, names);
+        }
+    }
+}
+
+#[cfg(feature = "canvas-runtime")]
+fn collect_exported_value_binding(
+    declaration: &::oxc::ast::ast::ExportNamedDeclaration<'_>,
+    runtime_value_bindings: &mut BTreeSet<String>,
+) {
+    match &declaration.declaration {
+        Some(::oxc::ast::ast::Declaration::VariableDeclaration(variable_declaration)) => {
+            for declarator in &variable_declaration.declarations {
+                collect_binding_pattern_names(&declarator.id, runtime_value_bindings);
+            }
+        }
+        Some(::oxc::ast::ast::Declaration::FunctionDeclaration(function)) => {
+            if let Some(id) = function.id.as_ref() {
+                runtime_value_bindings.insert(id.name.to_string());
+            }
+        }
+        Some(::oxc::ast::ast::Declaration::ClassDeclaration(class)) => {
+            if let Some(id) = class.id.as_ref() {
+                runtime_value_bindings.insert(id.name.to_string());
+            }
+        }
+        Some(::oxc::ast::ast::Declaration::TSEnumDeclaration(enum_declaration)) => {
+            runtime_value_bindings.insert(declaration_enum_id(enum_declaration));
+        }
+        _ => {}
+    }
+}
+
+#[cfg(feature = "canvas-runtime")]
+fn declaration_enum_id(declaration: &::oxc::ast::ast::TSEnumDeclaration<'_>) -> String {
+    declaration.id.name.to_string()
+}
+
+#[cfg(feature = "canvas-runtime")]
+/// Finds duplicate top-level value bindings in an assembled module. The OXC
+/// parser does not report redeclarations, so this is the final safety net
+/// before a compiled payload is persisted.
+pub(super) fn find_duplicate_root_bindings(statements: &[Statement<'_>]) -> Vec<(String, usize)> {
+    let mut declared: BTreeMap<String, usize> = BTreeMap::new();
+    let mut duplicates: Vec<(String, usize)> = Vec::new();
+
+    fn record(
+        name: &str,
+        offset: usize,
+        declared: &mut BTreeMap<String, usize>,
+        duplicates: &mut Vec<(String, usize)>,
+    ) {
+        if declared.contains_key(name) {
+            duplicates.push((name.to_string(), offset));
+            return;
+        }
+        declared.insert(name.to_string(), offset);
+    }
+
+    fn record_pattern_tree(
+        pattern: &BindingPattern<'_>,
+        declared: &mut BTreeMap<String, usize>,
+        duplicates: &mut Vec<(String, usize)>,
+    ) {
+        match pattern {
+            BindingPattern::BindingIdentifier(identifier) => record(
+                identifier.name.as_str(),
+                identifier.span.start as usize,
+                declared,
+                duplicates,
+            ),
+            BindingPattern::ObjectPattern(pattern) => {
+                for property in &pattern.properties {
+                    record_pattern_tree(&property.value, declared, duplicates);
+                }
+                if let Some(rest) = pattern.rest.as_ref() {
+                    record_pattern_tree(&rest.argument, declared, duplicates);
+                }
+            }
+            BindingPattern::ArrayPattern(pattern) => {
+                for element in pattern.elements.iter().flatten() {
+                    record_pattern_tree(element, declared, duplicates);
+                }
+                if let Some(rest) = pattern.rest.as_ref() {
+                    record_pattern_tree(&rest.argument, declared, duplicates);
+                }
+            }
+            BindingPattern::AssignmentPattern(pattern) => {
+                record_pattern_tree(&pattern.left, declared, duplicates);
+            }
+        }
+    }
+
+    fn record_statement(
+        statement: &Statement<'_>,
+        declared: &mut BTreeMap<String, usize>,
+        duplicates: &mut Vec<(String, usize)>,
+    ) {
+        match statement {
+            Statement::VariableDeclaration(declaration) => {
+                for declarator in &declaration.declarations {
+                    record_pattern_tree(&declarator.id, declared, duplicates);
+                }
+            }
+            Statement::FunctionDeclaration(function) => {
+                if let Some(id) = function.id.as_ref() {
+                    record(
+                        id.name.as_str(),
+                        id.span.start as usize,
+                        declared,
+                        duplicates,
+                    );
+                }
+            }
+            Statement::ClassDeclaration(class) => {
+                if let Some(id) = class.id.as_ref() {
+                    record(
+                        id.name.as_str(),
+                        id.span.start as usize,
+                        declared,
+                        duplicates,
+                    );
+                }
+            }
+            Statement::TSEnumDeclaration(declaration) => {
+                record(
+                    declaration.id.name.as_str(),
+                    declaration.id.span.start as usize,
+                    declared,
+                    duplicates,
+                );
+            }
+            Statement::ExportNamedDeclaration(declaration) => {
+                if let Some(inner) = declaration.declaration.as_ref() {
+                    record_declaration(inner, declared, duplicates);
+                }
+            }
+            Statement::ExportDefaultDeclaration(declaration) => match &declaration.declaration {
+                ::oxc::ast::ast::ExportDefaultDeclarationKind::FunctionDeclaration(function) => {
+                    if let Some(id) = function.id.as_ref() {
+                        record(
+                            id.name.as_str(),
+                            id.span.start as usize,
+                            declared,
+                            duplicates,
+                        );
+                    }
+                }
+                ::oxc::ast::ast::ExportDefaultDeclarationKind::ClassDeclaration(class) => {
+                    if let Some(id) = class.id.as_ref() {
+                        record(
+                            id.name.as_str(),
+                            id.span.start as usize,
+                            declared,
+                            duplicates,
+                        );
+                    }
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+
+    fn record_declaration(
+        declaration: &::oxc::ast::ast::Declaration<'_>,
+        declared: &mut BTreeMap<String, usize>,
+        duplicates: &mut Vec<(String, usize)>,
+    ) {
+        match declaration {
+            ::oxc::ast::ast::Declaration::VariableDeclaration(declaration) => {
+                for declarator in &declaration.declarations {
+                    record_pattern_tree(&declarator.id, declared, duplicates);
+                }
+            }
+            ::oxc::ast::ast::Declaration::FunctionDeclaration(function) => {
+                if let Some(id) = function.id.as_ref() {
+                    record(
+                        id.name.as_str(),
+                        id.span.start as usize,
+                        declared,
+                        duplicates,
+                    );
+                }
+            }
+            ::oxc::ast::ast::Declaration::ClassDeclaration(class) => {
+                if let Some(id) = class.id.as_ref() {
+                    record(
+                        id.name.as_str(),
+                        id.span.start as usize,
+                        declared,
+                        duplicates,
+                    );
+                }
+            }
+            ::oxc::ast::ast::Declaration::TSEnumDeclaration(declaration) => {
+                record(
+                    declaration.id.name.as_str(),
+                    declaration.id.span.start as usize,
+                    declared,
+                    duplicates,
+                );
+            }
+            _ => {}
+        }
+    }
+
+    for statement in statements {
+        record_statement(statement, &mut declared, &mut duplicates);
+    }
+    duplicates
+}
+
+#[cfg(feature = "canvas-runtime")]
 fn collect_class_binding(class: &Class<'_>, local_binding_offsets: &mut BTreeMap<String, usize>) {
     if let Some(id) = class.id.as_ref() {
         collect_binding_identifier(id, local_binding_offsets);
@@ -434,9 +729,23 @@ fn collect_binding_identifier(
 }
 
 #[cfg(feature = "canvas-runtime")]
-pub(super) fn canvas_runtime_binding_prelude(import_bindings: &CanvasSdkImportBindings) -> String {
+pub(super) fn canvas_runtime_binding_prelude(
+    import_bindings: &CanvasSdkImportBindings,
+    referenced_sdk_exports: &BTreeSet<String>,
+    runtime_value_bindings: &BTreeSet<String>,
+) -> String {
+    // The prelude only needs to bind SDK exports that the module actually
+    // references and that are not already occupied by a top-level local
+    // declaration (ESM shadowing semantics: a local binding wins). `h` and
+    // `Fragment` are always emitted because the JSX pragma depends on them.
     let mut local_bindings = sdk_runtime_exports()
         .iter()
+        .filter(|name| {
+            **name == "h"
+                || **name == "Fragment"
+                || (!runtime_value_bindings.contains(**name)
+                    && referenced_sdk_exports.contains(**name))
+        })
         .map(|name| {
             (
                 (*name).to_string(),
