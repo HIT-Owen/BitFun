@@ -99,7 +99,7 @@ function colorToRgbChannels(value: string): string | null {
  * also fall back to `--bf-appearance-token-color-text-primary` via var().
  */
 const FLOWCHAT_USER_TEXT_COLOR: Record<string, string> = {
-  'bitfun-light': '#655680',
+  'bitfun-light': '#6d4fc0',
   'bitfun-slate': '#a3b4ff',
   'bitfun-dark': '#b4a0fc',
   'bitfun-midnight': '#b39dff',
