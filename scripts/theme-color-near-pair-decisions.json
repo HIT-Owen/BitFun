@@ -84,6 +84,24 @@
       "reevaluateWhen": "Only if a visual review decides the dark-family themes need distinct user-voice hues."
     },
     {
+      "root": "src/web-ui/src",
+      "domain": "appearanceProjection",
+      "key": "#86b89a <-> #8bb89a",
+      "decision": "keep",
+      "owner": "src/web-ui/src/infrastructure/appearance/builtins/buildBuiltinAppearance.ts",
+      "reason": "Both are flow chat tool-voice text colors (Dark and Tokyo Night). The sage family is intentionally shared across dark themes so tool rows read consistently as machine/terminal text; the themes never render side by side.",
+      "reevaluateWhen": "Only if a visual review decides each dark theme needs a distinct tool-voice hue."
+    },
+    {
+      "root": "src/web-ui/src",
+      "domain": "appearanceProjection",
+      "key": "#8fa8bd <-> #87a9be",
+      "decision": "keep",
+      "owner": "src/web-ui/src/infrastructure/appearance/builtins/buildBuiltinAppearance.ts",
+      "reason": "Both are flow chat model-thinking text colors (Slate and Midnight) drawn from the same cool cyan-gray family so the thinking voice stays consistent across dark themes; they never render side by side.",
+      "reevaluateWhen": "Only if a visual review decides dark-family themes need distinct thinking hues."
+    },
+    {
       "root": "BitFun-Installer/src",
       "domain": "themePreset",
       "key": "#0e0e10 <-> #121214",

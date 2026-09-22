@@ -32,12 +32,12 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: var(--bf-appearance-token-color-text-secondary);
+    color: var(--bf-appearance-token-flowchat-tool-text-color);
     font-weight: 600;
   }
 
   .compact-card-content {
-    color: var(--bf-appearance-token-color-text-muted);
+    color: var(--bf-appearance-token-flowchat-tool-text-color);
   }
 
   .compact-card-extra {

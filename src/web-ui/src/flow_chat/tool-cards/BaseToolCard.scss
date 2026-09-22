@@ -167,7 +167,7 @@
 .tool-card-action {
   font-size: var(--bf-appearance-token-tool-card-action-font-size);
   font-weight: 500;
-  color: var(--bf-appearance-token-color-text-primary);
+  color: var(--bf-appearance-token-flowchat-tool-text-color);
   transition: color 0.2s ease;
   letter-spacing: -0.01em;
   flex-shrink: 0;
@@ -183,7 +183,7 @@
   min-width: 0;
   font-size: var(--bf-appearance-token-tool-card-action-font-size);
   font-weight: 500;
-  color: var(--bf-appearance-token-color-text-primary);
+  color: var(--bf-appearance-token-flowchat-tool-text-color);
   transition: color 0.2s ease;
   letter-spacing: -0.01em;
   line-height: var(--bf-appearance-token-tool-card-action-line-height);

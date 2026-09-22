@@ -109,6 +109,43 @@ const FLOWCHAT_USER_TEXT_COLOR: Record<string, string> = {
   'bitfun-tokyo-night': '#bb9af7',
 };
 
+/**
+ * Flow chat model-thinking text color, per builtin palette. Default is a cool
+ * cyan-gray ("internal draft" voice); themes whose user-voice color already
+ * sits in the cyan/blue family switch thinking to a dim violet so the two
+ * roles stay separable. Values keep >= 4.5:1 contrast on the chat surface and
+ * avoid semantic colors and the flow chat link color. Unknown palettes fall
+ * back to the body muted color (previous behavior).
+ */
+const FLOWCHAT_THINKING_TEXT_COLOR: Record<string, string> = {
+  'bitfun-light': '#437182',
+  'bitfun-slate': '#8fa8bd',
+  'bitfun-dark': '#93b3c8',
+  'bitfun-midnight': '#87a9be',
+  'bitfun-china-style': '#6b5f8f',
+  'bitfun-china-night': '#a89cc4',
+  'bitfun-cyber': '#a496dd',
+  'bitfun-tokyo-night': '#7fa2c4',
+};
+
+/**
+ * Flow chat tool-card text color (action labels and command/summary text).
+ * Default is a sage green ("machine/terminal" voice); themes whose green slot
+ * is already taken (Slate, Ink Charm, Ink Night) use a warm sand or ochre so
+ * tool text never reads as success-state green. Unknown palettes fall back to
+ * the previous muted body color.
+ */
+const FLOWCHAT_TOOL_TEXT_COLOR: Record<string, string> = {
+  'bitfun-light': '#477868',
+  'bitfun-slate': '#bfa87f',
+  'bitfun-dark': '#86b89a',
+  'bitfun-midnight': '#84aa90',
+  'bitfun-china-style': '#8a6d3f',
+  'bitfun-china-night': '#b09a72',
+  'bitfun-cyber': '#7fb8a4',
+  'bitfun-tokyo-night': '#8bb89a',
+};
+
 function createCssTokens(palette: AppearancePalette): Record<string, string> {
   const { colors, effects, motion, typography } = palette;
   const purple = colors.purple ?? {
@@ -324,6 +361,8 @@ function createCssTokens(palette: AppearancePalette): Record<string, string> {
     '--bf-appearance-token-flowchat-link-color': palette.type === 'dark' ? '#60a5fa' : '#0969da',
     '--bf-appearance-token-flowchat-link-hover-color': palette.type === 'dark' ? '#93c5fd' : '#0550ae',
     '--bf-appearance-token-flowchat-user-text-color': FLOWCHAT_USER_TEXT_COLOR[palette.id] ?? colors.text.primary,
+    '--bf-appearance-token-flowchat-thinking-text-color': FLOWCHAT_THINKING_TEXT_COLOR[palette.id] ?? colors.text.muted,
+    '--bf-appearance-token-flowchat-tool-text-color': FLOWCHAT_TOOL_TEXT_COLOR[palette.id] ?? colors.text.muted,
     '--bf-appearance-token-tool-card-font-mono': typography.font.mono,
     '--bf-appearance-token-tool-card-header-pad-y': '0.44rem',
     '--bf-appearance-token-tool-card-header-pad-right': '0.625rem',

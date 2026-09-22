@@ -178,7 +178,9 @@
   font-size: var(--bf-appearance-token-tool-card-action-font-size);
   line-height: var(--bf-appearance-token-tool-card-action-line-height);
   font-weight: var(--bf-appearance-token-font-weight-medium);
-  color: var(--bf-appearance-token-color-text-muted);
+  /* Tool voice color: labels read as machine actions, distinct from thinking
+   * (cyan-gray) and agent output (neutral primary). */
+  color: var(--bf-appearance-token-flowchat-tool-text-color);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   flex-shrink: 0;
 }
@@ -187,7 +189,7 @@
   flex: 1;
   font-size: var(--bf-appearance-token-tool-card-action-font-size);
   line-height: var(--bf-appearance-token-tool-card-action-line-height);
-  color: var(--bf-appearance-token-color-text-muted);
+  color: var(--bf-appearance-token-flowchat-tool-text-color);
   min-width: 0;
   transition: color 180ms ease, opacity 180ms ease;
   overflow: hidden;
