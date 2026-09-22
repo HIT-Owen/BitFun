@@ -100,7 +100,7 @@ function colorToRgbChannels(value: string): string | null {
  */
 const FLOWCHAT_USER_TEXT_COLOR: Record<string, string> = {
   'bitfun-light': '#655680',
-  'bitfun-slate': '#b8c4ff',
+  'bitfun-slate': '#a3b4ff',
   'bitfun-dark': '#b4a0fc',
   'bitfun-midnight': '#b39dff',
   'bitfun-china-style': '#2e5e8a',
