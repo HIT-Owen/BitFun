@@ -621,6 +621,18 @@ Collapses interact with follow mode in three mutually exclusive ways:
    reduction is also suppressed when the previous geometry was already at the
    physical bottom. That compensation would move the viewport away from the
    tail; the next follow frame owns the single tail correction instead.
+   The `late-shrink` transaction is viewport-bounded. Its anchor is a raw
+   `scrollTop`, not user-visible content, so the transaction may only reserve
+   the synthetic range required by `max(3 × clientHeight, 2048px)`
+   (`FOLLOWING_TAIL_LATE_SHRINK_*` constants in `flowChatScrollStability.ts`).
+   The recovery resolver rejects a clamp whose single-pass range shrink exceeds
+   the bound, and `preserveCollapseAnchorScrollTop`, the quiet settlement, and
+   the stream-end range transfer release the transaction instead of extending
+   it once the anchor's required range grows past the bound. Session-entry
+   Virtuoso estimate convergence produces multi-viewport overshoot; it must
+   rebase onto the measured tail instead of reserving, and a genuine unsignaled
+   collapse larger than the bound degrades to a one-frame downward correction
+   that the follow loop re-owns immediately.
 3. **Not following (user reading older content):** the intent +
    pre-compensation + semantic-anchor path applies as described above, and
    `shouldSuspendAutoFollow` keeps event-driven follow scheduling
@@ -704,6 +716,11 @@ If a future collapsible component shows the same "header drops" or "flash on col
   no collapse transaction owns the range. Session-open and history-projection
   handoffs rebase their measurements instead of treating estimate convergence
   as content collapse.
+- A `late-shrink-clamp` transaction is a bounded fallback: its synthetic range
+  may never exceed `max(3 × clientHeight, 2048px)`. When the anchor's required
+  range exceeds the bound, release the anchor and the reserved range instead of
+  extending. Intent-driven collapse transactions remain uncapped because their
+  anchor is a rendered card header.
 - Pre-collapse intent must capture the anchor before the component shrinks.
 - Compensation must not be consumed too early during active layout transitions.
 - Session changes and empty-list resets must clear compensation and anchor state.

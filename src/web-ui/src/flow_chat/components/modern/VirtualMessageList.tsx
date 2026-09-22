@@ -70,6 +70,7 @@ import {
   createInitialBottomReservationState,
   ensureCollapseReservationForScrollTop,
   getCanceledUnsettledStickyPinGrowthPx,
+  getFollowingTailLateShrinkRangeBoundPx,
   getReservationTotalPx,
   isTurnPinRequestIdentityCurrent,
   protectCurrentCollapseReservation,
@@ -85,6 +86,7 @@ import {
   settleRetainedCollapseReservationForAnchor,
   shouldBypassShrinkCompensationInTailFollow,
   shouldClearExpiredProvisionalStickyPin,
+  shouldReleaseLateShrinkClampReservation,
   shouldSuppressFollowingTailNegativeScrollBy,
   shouldSyncPhysicalBottom,
   transferCollapseReservationToPin,
@@ -1261,11 +1263,80 @@ const VirtualMessageListSession = forwardRef<VirtualMessageListRef, VirtualMessa
     updateBottomReservationState,
   ]);
 
+  /**
+   * A late-shrink-clamp transaction anchors a raw scrollTop instead of a
+   * rendered element. When keeping that scrollTop reachable would require more
+   * synthetic Footer range than the viewport bound, the transaction is
+   * preserving a session-entry estimate overshoot rather than real collapsed
+   * content. Release it: drop the anchor, the owner, and the collapse
+   * reservation (keeping any pin reservation untouched) so the viewport
+   * rebases onto the real content tail and the follow loop re-owns motion.
+   */
+  const releaseLateShrinkClampReservation = useCallback((
+    scroller: HTMLElement,
+    source: string,
+    targetScrollTop: number,
+  ) => {
+    const reservationBefore = bottomReservationStateRef.current;
+    retainedCollapseAnchorRef.current = null;
+    clearRetainedCollapseSettlement();
+    clearCollapseReservationOwner();
+    const nextState = sanitizeBottomReservationState({
+      ...createInitialBottomReservationState(),
+      pin: reservationBefore.pin,
+    });
+    updateBottomReservationState(nextState);
+    applyFooterCompensationNow(nextState);
+    previousScrollTopRef.current = scroller.scrollTop;
+    previousMeasuredHeightRef.current = snapshotMeasuredContentHeight(scroller, nextState);
+    recordScrollerGeometry(scroller);
+    if (flowChatDiagnostics.isEnabled()) {
+      flowChatDiagnostics.trace({
+        hypothesis: 'G',
+        location: 'VirtualMessageList.releaseLateShrinkClampReservation',
+        message: 'Late-shrink clamp transaction released at the viewport bound',
+        data: () => ({
+          source,
+          targetScrollTop,
+          scrollTop: scroller.scrollTop,
+          scrollHeight: scroller.scrollHeight,
+          clientHeight: scroller.clientHeight,
+          reservationBefore,
+          reservationAfter: bottomReservationStateRef.current,
+          coordinatorMode: viewportCoordinatorRef.current.getMode(),
+        }),
+      });
+    }
+  }, [
+    applyFooterCompensationNow,
+    clearCollapseReservationOwner,
+    clearRetainedCollapseSettlement,
+    recordScrollerGeometry,
+    snapshotMeasuredContentHeight,
+    updateBottomReservationState,
+  ]);
+
   const preserveCollapseAnchorScrollTop = useCallback((
     scroller: HTMLElement,
     targetScrollTop: number,
     source: string,
   ) => {
+    const retainedAnchorForBound = retainedCollapseAnchorRef.current;
+    if (
+      !pendingCollapseIntentRef.current.active &&
+      retainedAnchorForBound?.toolName === 'late-shrink-clamp' &&
+      Math.abs(targetScrollTop - retainedAnchorForBound.anchorScrollTop) <= COMPENSATION_EPSILON_PX &&
+      shouldReleaseLateShrinkClampReservation({
+        targetScrollTop,
+        scrollHeight: scroller.scrollHeight,
+        clientHeight: scroller.clientHeight,
+        currentPinPx: getReservationTotalPx(bottomReservationStateRef.current.pin),
+        currentCollapsePx: getReservationTotalPx(bottomReservationStateRef.current.collapse),
+      })
+    ) {
+      releaseLateShrinkClampReservation(scroller, source, targetScrollTop);
+      return false;
+    }
     const currentState = bottomReservationStateRef.current;
     const nextState = ensureCollapseReservationForScrollTop(currentState, {
       targetScrollTop,
@@ -1322,6 +1393,7 @@ const VirtualMessageListSession = forwardRef<VirtualMessageListRef, VirtualMessa
     applyFooterCompensationNow,
     acquireCollapseReservationOwner,
     recordScrollerGeometry,
+    releaseLateShrinkClampReservation,
     snapshotMeasuredContentHeight,
     updateBottomReservationState,
   ]);
@@ -1336,7 +1408,22 @@ const VirtualMessageListSession = forwardRef<VirtualMessageListRef, VirtualMessa
       return;
     }
 
-    const targetScrollTop = Math.max(retainedAnchor.anchorScrollTop, scroller.scrollTop);
+    const settledTargetScrollTop = Math.max(retainedAnchor.anchorScrollTop, scroller.scrollTop);
+    if (
+      retainedAnchor.toolName === 'late-shrink-clamp' &&
+      shouldReleaseLateShrinkClampReservation({
+        targetScrollTop: settledTargetScrollTop,
+        scrollHeight: scroller.scrollHeight,
+        clientHeight: scroller.clientHeight,
+        currentPinPx: getReservationTotalPx(bottomReservationStateRef.current.pin),
+        currentCollapsePx: getReservationTotalPx(bottomReservationStateRef.current.collapse),
+      })
+    ) {
+      releaseLateShrinkClampReservation(scroller, `quiet-settle:${reason}`, settledTargetScrollTop);
+      return;
+    }
+
+    const targetScrollTop = settledTargetScrollTop;
     retainedAnchor.anchorScrollTop = targetScrollTop;
     const currentState = bottomReservationStateRef.current;
     const nextState = settleRetainedCollapseReservationForAnchor(currentState, {
@@ -1416,6 +1503,7 @@ const VirtualMessageListSession = forwardRef<VirtualMessageListRef, VirtualMessa
     applyFooterCompensationNow,
     clearCollapseReservationOwner,
     preserveCollapseAnchorScrollTop,
+    releaseLateShrinkClampReservation,
     updateBottomReservationState,
   ]);
 
@@ -1477,6 +1565,26 @@ const VirtualMessageListSession = forwardRef<VirtualMessageListRef, VirtualMessa
     };
     retainedCollapseAnchorRef.current = nextRetainedAnchor;
 
+    if (
+      !pendingCollapseIntentRef.current.active &&
+      nextRetainedAnchor.toolName === 'late-shrink-clamp' &&
+      scroller &&
+      shouldReleaseLateShrinkClampReservation({
+        targetScrollTop: nextRetainedAnchor.anchorScrollTop,
+        scrollHeight: scroller.scrollHeight,
+        clientHeight: scroller.clientHeight,
+        currentPinPx: getReservationTotalPx(currentState.pin),
+        currentCollapsePx: getReservationTotalPx(currentState.collapse),
+      })
+    ) {
+      releaseLateShrinkClampReservation(
+        scroller,
+        `retain:${reason}`,
+        nextRetainedAnchor.anchorScrollTop,
+      );
+      return;
+    }
+
     const nextState = scroller
       ? ensureCollapseReservationForScrollTop(currentState, {
         targetScrollTop: nextRetainedAnchor.anchorScrollTop,
@@ -1519,6 +1627,7 @@ const VirtualMessageListSession = forwardRef<VirtualMessageListRef, VirtualMessa
     clearCollapseReservationOwner,
     clearRetainedCollapseSettlement,
     preserveCollapseAnchorScrollTop,
+    releaseLateShrinkClampReservation,
     scheduleRetainedCollapseSettlement,
     updateBottomReservationState,
   ]);
@@ -4266,6 +4375,9 @@ const VirtualMessageListSession = forwardRef<VirtualMessageListRef, VirtualMessa
           hasRecentUserUpwardIntent,
           scrollbarPointerInteractionActive: scrollbarPointerInteractionActiveRef.current,
           collapseProtectionActive,
+          maxRecoverableRangeShrinkPx: getFollowingTailLateShrinkRangeBoundPx(
+            scrollerElement.clientHeight,
+          ),
         })
         : null;
       if (followingTailShrinkClampRecovery) {
@@ -4296,6 +4408,29 @@ const VirtualMessageListSession = forwardRef<VirtualMessageListRef, VirtualMessa
           });
         }
         return;
+      }
+      if (isFollowingTailShrinkClampCandidate && flowChatDiagnostics.isEnabled()) {
+        const previousMaxScrollTop = previousShrinkClampGeometry
+          ? Math.max(0, previousShrinkClampGeometry.scrollHeight - previousShrinkClampGeometry.clientHeight)
+          : null;
+        const currentMaxScrollTop = currentScrollerGeometry
+          ? Math.max(0, currentScrollerGeometry.scrollHeight - currentScrollerGeometry.clientHeight)
+          : null;
+        flowChatDiagnostics.trace({
+          hypothesis: 'G',
+          location: 'VirtualMessageList.handleScroll',
+          message: 'Following-tail shrink clamp recovery not applied',
+          data: () => ({
+            rangeShrinkPx: previousMaxScrollTop !== null && currentMaxScrollTop !== null
+              ? previousMaxScrollTop - currentMaxScrollTop
+              : null,
+            rangeBoundPx: getFollowingTailLateShrinkRangeBoundPx(scrollerElement.clientHeight),
+            previousGeometry: previousScrollerGeometry,
+            currentGeometry: currentScrollerGeometry,
+            reservation: bottomReservationStateRef.current,
+            scrollTop: scrollerElement.scrollTop,
+          }),
+        });
       }
       if (
         retainedCollapseAnchorRef.current &&

@@ -4,6 +4,18 @@ import type { FlowChatViewportAnchorMode } from './FlowChatViewportCoordinator';
 export const COMPENSATION_EPSILON_PX = 0.5;
 const FOLLOWING_TAIL_SHRINK_CLAMP_TOLERANCE_PX = 2;
 
+/**
+ * Upper bound, in viewports, on the synthetic Footer range one unsignaled
+ * following-tail late-shrink transaction may reserve. Intent-driven collapse
+ * transactions stay uncapped because their anchor is a user-visible card
+ * header; the late-shrink fallback anchors a raw scrollTop, so a large range
+ * requirement is far more likely to be a Virtuoso estimate correction than a
+ * real content collapse (session-entry estimate convergence produces
+ * multi-viewport overshoot and must rebase instead of reserving).
+ */
+export const FOLLOWING_TAIL_LATE_SHRINK_MAX_RESERVATION_VIEWPORTS = 3;
+export const FOLLOWING_TAIL_LATE_SHRINK_MIN_ABSOLUTE_RESERVATION_PX = 2048;
+
 type BottomReservationKind = 'collapse' | 'pin';
 
 interface BottomReservationBase {
@@ -475,6 +487,51 @@ export interface FollowingTailShrinkClampRecovery {
   scrollClampPx: number;
 }
 
+/**
+ * Viewport-relative ceiling for one late-shrink-clamp transaction. A rendered
+ * collapse can legitimately require more (intent path), but an unsignaled
+ * clamp larger than this is treated as a measurement correction.
+ */
+export function getFollowingTailLateShrinkRangeBoundPx(clientHeight: number): number {
+  const viewportPx = Number.isFinite(clientHeight) ? Math.max(0, clientHeight) : 0;
+  return Math.max(
+    FOLLOWING_TAIL_LATE_SHRINK_MIN_ABSOLUTE_RESERVATION_PX,
+    FOLLOWING_TAIL_LATE_SHRINK_MAX_RESERVATION_VIEWPORTS * viewportPx,
+  );
+}
+
+/**
+ * Detects a late-shrink-clamp transaction whose anchor would require more
+ * synthetic Footer range than the viewport bound. The anchor is a raw
+ * scrollTop rather than a rendered element, so an oversized requirement means
+ * the transaction is preserving an estimate-inflated position and must be
+ * released instead of extended.
+ */
+export function shouldReleaseLateShrinkClampReservation(options: {
+  targetScrollTop: number;
+  scrollHeight: number;
+  clientHeight: number;
+  currentPinPx: number;
+  currentCollapsePx: number;
+}): boolean {
+  const pinPx = sanitizeReservationPx(options.currentPinPx);
+  const collapsePx = sanitizeReservationPx(options.currentCollapsePx);
+  const clientHeight = sanitizeReservationPx(options.clientHeight);
+  const contentHeightWithoutReservation = Math.max(
+    0,
+    sanitizeReservationPx(options.scrollHeight) - pinPx - collapsePx,
+  );
+  const requiredCollapsePx = Math.max(
+    0,
+    getRequiredTotalPxForScrollTop({
+      targetScrollTop: options.targetScrollTop,
+      contentHeightWithoutReservation,
+      clientHeight,
+    }) - pinPx,
+  );
+  return requiredCollapsePx > getFollowingTailLateShrinkRangeBoundPx(clientHeight);
+}
+
 /** Distinguishes a browser range clamp from user or programmatic upward scrolling. */
 export function resolveFollowingTailShrinkClampRecovery(options: {
   previousGeometry: {
@@ -492,6 +549,7 @@ export function resolveFollowingTailShrinkClampRecovery(options: {
   hasRecentUserUpwardIntent: boolean;
   scrollbarPointerInteractionActive: boolean;
   collapseProtectionActive: boolean;
+  maxRecoverableRangeShrinkPx?: number;
 }): FollowingTailShrinkClampRecovery | null {
   if (
     !options.previousGeometry ||
@@ -538,6 +596,13 @@ export function resolveFollowingTailShrinkClampRecovery(options: {
       FOLLOWING_TAIL_SHRINK_CLAMP_TOLERANCE_PX ||
     Math.abs(rangeShrinkPx - scrollClampPx) >
       FOLLOWING_TAIL_SHRINK_CLAMP_TOLERANCE_PX
+  ) {
+    return null;
+  }
+
+  if (
+    options.maxRecoverableRangeShrinkPx !== undefined &&
+    rangeShrinkPx > options.maxRecoverableRangeShrinkPx
   ) {
     return null;
   }

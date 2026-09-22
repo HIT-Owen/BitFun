@@ -14,7 +14,9 @@ import {
   clampPinReservationPxToViewport,
   consumeBottomReservationForContentGrowth,
   ensureCollapseReservationForScrollTop,
+  FOLLOWING_TAIL_LATE_SHRINK_MIN_ABSOLUTE_RESERVATION_PX,
   getCanceledUnsettledStickyPinGrowthPx,
+  getFollowingTailLateShrinkRangeBoundPx,
   isTurnPinRequestIdentityCurrent,
   protectCurrentCollapseReservation,
   reconcileUnsignaledShrinkReservation,
@@ -28,6 +30,7 @@ import {
   settleCollapseReservationForViewport,
   shouldBypassShrinkCompensationInTailFollow,
   shouldClearExpiredProvisionalStickyPin,
+  shouldReleaseLateShrinkClampReservation,
   shouldSyncPhysicalBottom,
   shouldSuppressFollowingTailNegativeScrollBy,
   transferCollapseReservationToPin,
@@ -1598,6 +1601,67 @@ describe('VirtualMessageList session boundary', () => {
     })).toBeNull();
   });
 
+  it('rejects a following-tail clamp recovery whose shrink exceeds the viewport bound', () => {
+    const entryConvergenceGeometry = {
+      previousGeometry: {
+        scrollTop: 39_000,
+        scrollHeight: 40_000,
+        clientHeight: 1_000,
+      },
+      currentGeometry: {
+        scrollTop: 11_000,
+        scrollHeight: 12_000,
+        clientHeight: 1_000,
+      },
+      isFollowingOutput: true,
+      isStreamingOutput: true,
+      hasRecentUserUpwardIntent: false,
+      scrollbarPointerInteractionActive: false,
+      collapseProtectionActive: false,
+      maxRecoverableRangeShrinkPx: getFollowingTailLateShrinkRangeBoundPx(1_000),
+    };
+
+    expect(resolveFollowingTailShrinkClampRecovery(entryConvergenceGeometry)).toBeNull();
+    expect(resolveFollowingTailShrinkClampRecovery({
+      ...entryConvergenceGeometry,
+      maxRecoverableRangeShrinkPx: undefined,
+    })?.rangeShrinkPx).toBe(28_000);
+  });
+
+  it('bounds late-shrink synthetic range to a few viewports of the viewport height', () => {
+    expect(getFollowingTailLateShrinkRangeBoundPx(1_000)).toBe(3_000);
+    expect(getFollowingTailLateShrinkRangeBoundPx(100))
+      .toBe(FOLLOWING_TAIL_LATE_SHRINK_MIN_ABSOLUTE_RESERVATION_PX);
+    expect(getFollowingTailLateShrinkRangeBoundPx(Number.NaN))
+      .toBe(FOLLOWING_TAIL_LATE_SHRINK_MIN_ABSOLUTE_RESERVATION_PX);
+
+    // Keeping a 39_000 scrollTop reachable over 12_000 of content needs 28_000
+    // of synthetic range: that is an estimate correction, not a collapse.
+    expect(shouldReleaseLateShrinkClampReservation({
+      targetScrollTop: 39_000,
+      scrollHeight: 12_000,
+      clientHeight: 1_000,
+      currentPinPx: 0,
+      currentCollapsePx: 0,
+    })).toBe(true);
+    // A 250px tail collapse over 3_000 of content stays inside the bound.
+    expect(shouldReleaseLateShrinkClampReservation({
+      targetScrollTop: 2_250,
+      scrollHeight: 3_000,
+      clientHeight: 1_000,
+      currentPinPx: 0,
+      currentCollapsePx: 0,
+    })).toBe(false);
+    // Existing pin range is not charged to the late-shrink transaction.
+    expect(shouldReleaseLateShrinkClampReservation({
+      targetScrollTop: 4_000,
+      scrollHeight: 3_000,
+      clientHeight: 1_000,
+      currentPinPx: 3_500,
+      currentCollapsePx: 0,
+    })).toBe(false);
+  });
+
   it('cancels unsettled sticky pin growth only for unsignaled height corrections', () => {
     expect(getCanceledUnsettledStickyPinGrowthPx({
       pendingGrowthPx: 207,
@@ -1897,6 +1961,132 @@ describe('VirtualMessageList session boundary', () => {
     expect(flowDiagnosticsMocks.trace).toHaveBeenCalledWith(expect.objectContaining({
       location: 'VirtualMessageList.handleScroll',
       message: 'Following-tail shrink clamp recovered as a viewport transaction',
+    }));
+  });
+
+  it('does not reserve a session-entry estimate collapse as a late-shrink range', () => {
+    flowDiagnosticsMocks.enabled = true;
+    const session = createSession('session-a', 'turn-a');
+    session.dialogTurns[0].status = 'processing';
+    session.dialogTurns[0].modelRounds = [{
+      id: 'round-turn-a',
+      status: 'streaming',
+      isStreaming: true,
+      items: [],
+      startTime: 1,
+    } as typeof session.dialogTurns[number]['modelRounds'][number]];
+    stateMocks.activeSession = session;
+    stateMocks.virtualItems = [createItem('turn-a'), createModelItem('turn-a')];
+
+    act(() => {
+      root.render(<VirtualMessageList />);
+    });
+
+    const scroller = container.querySelector<HTMLElement>('[data-virtuoso-scroller="true"]');
+    const footer = container.querySelector<HTMLElement>('.message-list-footer');
+    expect(scroller).not.toBeNull();
+    expect(footer).not.toBeNull();
+    if (!scroller || !footer) {
+      return;
+    }
+
+    let contentHeight = 40_000;
+    Object.defineProperties(scroller, {
+      clientHeight: { configurable: true, value: 1_000 },
+      scrollHeight: {
+        configurable: true,
+        get: () => contentHeight + (Number.parseFloat(footer.style.height) || 0),
+      },
+      scrollTop: { configurable: true, writable: true, value: 0 },
+    });
+    const footerHeightBeforeConvergence = Number.parseFloat(footer.style.height);
+    scroller.scrollTop = scroller.scrollHeight - scroller.clientHeight;
+    act(() => {
+      window.dispatchEvent(new Event('resize'));
+    });
+
+    // Virtuoso estimate convergence collapses the inflated range in one commit.
+    contentHeight = 12_000;
+    scroller.scrollTop = scroller.scrollHeight - scroller.clientHeight;
+    act(() => {
+      scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+    });
+
+    expect(Number.parseFloat(footer.style.height)).toBeCloseTo(
+      footerHeightBeforeConvergence,
+      2,
+    );
+    expect(scroller.scrollTop).toBe(scroller.scrollHeight - scroller.clientHeight);
+    expect(flowDiagnosticsMocks.trace).not.toHaveBeenCalledWith(expect.objectContaining({
+      message: 'Following-tail shrink clamp recovered as a viewport transaction',
+    }));
+  });
+
+  it('releases a retained late-shrink anchor when convergence grows past the viewport bound', () => {
+    flowDiagnosticsMocks.enabled = true;
+    const session = createSession('session-a', 'turn-a');
+    session.dialogTurns[0].status = 'processing';
+    session.dialogTurns[0].modelRounds = [{
+      id: 'round-turn-a',
+      status: 'streaming',
+      isStreaming: true,
+      items: [],
+      startTime: 1,
+    } as typeof session.dialogTurns[number]['modelRounds'][number]];
+    stateMocks.activeSession = session;
+    stateMocks.virtualItems = [createItem('turn-a'), createModelItem('turn-a')];
+
+    act(() => {
+      root.render(<VirtualMessageList />);
+    });
+
+    const scroller = container.querySelector<HTMLElement>('[data-virtuoso-scroller="true"]');
+    const footer = container.querySelector<HTMLElement>('.message-list-footer');
+    expect(scroller).not.toBeNull();
+    expect(footer).not.toBeNull();
+    if (!scroller || !footer) {
+      return;
+    }
+
+    let contentHeight = 5_000;
+    Object.defineProperties(scroller, {
+      clientHeight: { configurable: true, value: 1_000 },
+      scrollHeight: {
+        configurable: true,
+        get: () => contentHeight + (Number.parseFloat(footer.style.height) || 0),
+      },
+      scrollTop: { configurable: true, writable: true, value: 0 },
+    });
+    const footerBaseline = Number.parseFloat(footer.style.height);
+
+    // A sub-bound convergence step is still recovered as today.
+    const stableScrollTop = scroller.scrollHeight - scroller.clientHeight;
+    scroller.scrollTop = stableScrollTop;
+    act(() => {
+      window.dispatchEvent(new Event('resize'));
+    });
+    contentHeight = 3_000;
+    scroller.scrollTop = scroller.scrollHeight - scroller.clientHeight;
+    act(() => {
+      scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+    });
+    expect(Number.parseFloat(footer.style.height)).toBeCloseTo(footerBaseline + 2_001, 2);
+    expect(scroller.scrollTop).toBe(stableScrollTop);
+
+    // A later measured shrink rides the retained anchor and crosses the bound:
+    // the transaction must release instead of extending further.
+    contentHeight = 1_500;
+    act(() => {
+      resizeObserverMocks.callbacks.at(-1)?.();
+    });
+    for (let frame = 0; frame < 4; frame += 1) {
+      flushAnimationFrame();
+    }
+
+    expect(Number.parseFloat(footer.style.height)).toBeCloseTo(footerBaseline, 2);
+    expect(flowDiagnosticsMocks.trace).toHaveBeenCalledWith(expect.objectContaining({
+      location: 'VirtualMessageList.releaseLateShrinkClampReservation',
+      message: 'Late-shrink clamp transaction released at the viewport bound',
     }));
   });
 
