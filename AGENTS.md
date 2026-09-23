@@ -89,6 +89,16 @@ commands, use the nearest local guide. The full script registry remains in
   because dev mode and the packaged artifact can differ in resource loading,
   paths, and cache behavior.
 
+### Desktop packaging naming
+
+- Local packaged builds stamp bundle filenames with the build date and the
+  current commit id, e.g.
+  `BitFun_0.2.17_20260922_d78c2cc_x64-setup.exe`
+  (`stampLocalBundleArtifacts` in `scripts/desktop-tauri-build.mjs`).
+- GitHub Actions builds and updater-artifact builds
+  (`BITFUN_ENABLE_UPDATER_ARTIFACTS`) keep the canonical Tauri names: release
+  staging and the updater manifests match `BitFun_<version>_<platform>-setup.exe`.
+
 ## Global rules
 
 ### Git workflow

@@ -3,7 +3,14 @@ import { mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { prepareTauriConfig, shouldRetryMacDmgBuild } from './desktop-tauri-build.mjs';
+import {
+  buildStampBundleName,
+  collectBundleArtifacts,
+  prepareTauriConfig,
+  resolveBuildStamp,
+  shouldRetryMacDmgBuild,
+  stampLocalBundleArtifacts,
+} from './desktop-tauri-build.mjs';
 import { resolveProductDefinition } from './product-customization/resolver.mjs';
 
 const FAILED_BUILD = { status: 1 };
@@ -178,4 +185,119 @@ test('Desktop release config bundles models.dev notices and provenance', () => {
     ],
     'third-party/models.dev/provenance.json'
   );
+});
+
+test('local bundle stamping inserts date and commit id before the artifact extension', () => {
+  const stamp = { dateStamp: '20260922', commitId: 'd78c2cc' };
+  assert.equal(
+    buildStampBundleName('BitFun_0.2.17_x64-setup.exe', stamp),
+    'BitFun_0.2.17_x64-setup_20260922_d78c2cc.exe'
+  );
+  assert.equal(
+    buildStampBundleName('BitFun_0.2.17_x64_en-US.msi', stamp),
+    'BitFun_0.2.17_x64_en-US_20260922_d78c2cc.msi'
+  );
+  assert.equal(
+    buildStampBundleName('BitFun_0.2.17_aarch64.dmg', stamp),
+    'BitFun_0.2.17_aarch64_20260922_d78c2cc.dmg'
+  );
+  assert.equal(buildStampBundleName('BitFun_0.2.17.tar.gz', stamp), null);
+  assert.equal(
+    buildStampBundleName('BitFun_0.2.17_x64-setup_20260922_d78c2cc.exe', stamp),
+    null
+  );
+});
+
+test('resolveBuildStamp uses the provided runtime values and falls back to nogit', () => {
+  assert.deepEqual(resolveBuildStamp({ now: '2026-09-22T10:00:00', commitId: 'abc1234' }), {
+    dateStamp: '20260922',
+    commitId: 'abc1234',
+  });
+  assert.equal(resolveBuildStamp({ commitId: '' }).commitId, 'nogit');
+  const resolvedFromGit = resolveBuildStamp({ now: '2026-09-22T10:00:00' });
+  assert.match(resolvedFromGit.commitId, /^[0-9a-f]{7,}$/);
+});
+
+function stampFixture() {
+  const root = join(tmpdir(), `bitfun-bundle-stamp-${process.pid}-${Date.now()}`);
+  const desktopDir = join(root, 'src', 'apps', 'desktop');
+  const bundleDir = join(root, 'target', 'release', 'bundle', 'nsis');
+  mkdirSync(desktopDir, { recursive: true });
+  mkdirSync(bundleDir, { recursive: true });
+  const freshInstaller = join(bundleDir, 'BitFun_0.2.17_x64-setup.exe');
+  writeFileSync(freshInstaller, 'installer');
+  const staleInstaller = join(bundleDir, 'BitFun_0.2.16_x64-setup.exe');
+  writeFileSync(staleInstaller, 'stale');
+  const staleTime = new Date(Date.now() - 60_000);
+  utimesSync(staleInstaller, staleTime, staleTime);
+  return {
+    bundleDir,
+    desktopDir,
+    freshInstaller,
+    staleInstaller,
+    runtime: {
+      cargoTargetDir: join(root, 'target'),
+      commitId: 'd78c2cc',
+      now: '2026-09-22T10:00:00',
+      root,
+    },
+    cleanup: () => rmSync(root, { force: true, recursive: true }),
+  };
+}
+
+test('stamps only fresh local bundle artifacts and skips CI and updater builds', () => {
+  const fixture = stampFixture();
+  try {
+    const renamed = stampLocalBundleArtifacts({
+      args: [],
+      buildStartedAtMs: Date.now(),
+      desktopDir: fixture.desktopDir,
+      runtime: fixture.runtime,
+    });
+    assert.deepEqual(renamed, [join(fixture.bundleDir, 'BitFun_0.2.17_x64-setup_20260922_d78c2cc.exe')]);
+    assert.equal(
+      readFileSync(renamed[0], 'utf8'),
+      'installer'
+    );
+    assert.equal(
+      collectBundleArtifacts(fixture.bundleDir, Date.now()).length,
+      1,
+      'the stale artifact is filtered by the build-start mtime guard'
+    );
+
+    const ciFixture = stampFixture();
+    try {
+      assert.deepEqual(
+        stampLocalBundleArtifacts({
+          args: [],
+          buildStartedAtMs: Date.now(),
+          desktopDir: ciFixture.desktopDir,
+          runtime: { ...ciFixture.runtime, githubActions: 'true' },
+        }),
+        []
+      );
+      assert.deepEqual(
+        stampLocalBundleArtifacts({
+          args: ['--no-bundle'],
+          buildStartedAtMs: Date.now(),
+          desktopDir: ciFixture.desktopDir,
+          runtime: ciFixture.runtime,
+        }),
+        []
+      );
+      assert.deepEqual(
+        stampLocalBundleArtifacts({
+          args: [],
+          buildStartedAtMs: Date.now(),
+          desktopDir: ciFixture.desktopDir,
+          runtime: { ...ciFixture.runtime, updaterArtifactsEnabled: 'true' },
+        }),
+        []
+      );
+    } finally {
+      ciFixture.cleanup();
+    }
+  } finally {
+    fixture.cleanup();
+  }
 });

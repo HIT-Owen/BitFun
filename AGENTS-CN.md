@@ -73,6 +73,15 @@ Web UI、mobile、CLI、Desktop、Installer、打包及 focused test 命令由�
   打包构建（`scripts/desktop-tauri-build.mjs`），并在安装版上完整验证一遍——dev 模式与
   打包产物在资源加载、路径、缓存行为上可能存在差异。
 
+### Desktop 打包命名约定
+
+- 本地打包产物文件名追加构建日期与当前 commit id，例如
+  `BitFun_0.2.17_20260922_d78c2cc_x64-setup.exe`
+  （见 `scripts/desktop-tauri-build.mjs` 的 `stampLocalBundleArtifacts`）。
+- GitHub Actions 构建与 updater 产物构建（`BITFUN_ENABLE_UPDATER_ARTIFACTS`）
+  保持 Tauri 原始命名：release 资产收集与 updater manifest 按
+  `BitFun_<version>_<platform>-setup.exe` 模板匹配产物。
+
 ## 全局规则
 
 ### 流程产物

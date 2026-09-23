@@ -1,13 +1,22 @@
 #!/usr/bin/env node
 /** Runs `tauri build` from src/apps/desktop with CI=true. */
-import { spawnSync } from 'child_process';
+import { spawnSync, execSync } from 'child_process';
 import { fileURLToPath } from 'url';
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'path';
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from 'path';
 import {
   existsSync,
   mkdirSync,
   readFileSync,
   readdirSync,
+  renameSync,
   statSync,
   writeFileSync,
 } from 'fs';
@@ -73,6 +82,18 @@ async function main() {
 
   if (r.status === 0 && process.platform === 'darwin') {
     patchDmgExtras(ROOT);
+  }
+
+  if (r.status === 0) {
+    try {
+      stampLocalBundleArtifacts({
+        args: forward,
+        buildStartedAtMs,
+        desktopDir,
+      });
+    } catch (error) {
+      console.warn(`[tauri-build] bundle stamping skipped: ${error.message || String(error)}`);
+    }
   }
 
   // Keep only the latest useful Cargo caches for this build profile after tauri build ends.
@@ -164,6 +185,145 @@ function optionValue(args, option) {
     }
   }
   return undefined;
+}
+
+// Installer artifact extensions that receive a local build stamp
+// (`_<YYYYMMDD>_<commit>` before the extension). CI (GitHub Actions) and
+// updater-artifact builds are excluded: release staging and the updater
+// manifests match the canonical Tauri names (`BitFun_<version>_<platform>-setup.exe`).
+const STAMPED_BUNDLE_ARTIFACT_EXTENSIONS = new Set([
+  '.exe',
+  '.msi',
+  '.dmg',
+  '.AppImage',
+  '.deb',
+  '.rpm',
+]);
+
+export function buildStampBundleName(fileName, stamp) {
+  const lower = fileName.toLowerCase();
+  const extension = [...STAMPED_BUNDLE_ARTIFACT_EXTENSIONS]
+    .filter((candidate) => lower.endsWith(candidate.toLowerCase()))
+    .sort((left, right) => right.length - left.length)[0];
+  if (!extension) {
+    return null;
+  }
+  const stampSuffix = `_${stamp.dateStamp}_${stamp.commitId}`;
+  if (fileName.endsWith(`${stampSuffix}${extension}`)) {
+    return null;
+  }
+  const stem = fileName.slice(0, -extension.length);
+  return `${stem}${stampSuffix}${extension}`;
+}
+
+export function resolveBuildStamp(runtime = {}) {
+  const now = runtime.now ? new Date(runtime.now) : new Date();
+  const dateStamp = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ].join('');
+  const commitId = runtime.commitId ?? readGitCommitId();
+  return { dateStamp, commitId: commitId || 'nogit' };
+}
+
+function readGitCommitId() {
+  try {
+    return execSync('git rev-parse --short=7 HEAD', {
+      cwd: ROOT,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
+export function collectBundleArtifacts(bundleRootDir, buildStartedAtMs) {
+  const artifacts = [];
+  const visit = (dir) => {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        visit(fullPath);
+        continue;
+      }
+      const lower = entry.name.toLowerCase();
+      const matched = [...STAMPED_BUNDLE_ARTIFACT_EXTENSIONS]
+        .some((extension) => lower.endsWith(extension.toLowerCase()));
+      if (!matched) {
+        continue;
+      }
+      try {
+        if (statSync(fullPath).mtimeMs >= buildStartedAtMs - 1_000) {
+          artifacts.push(fullPath);
+        }
+      } catch {
+        // ignore unreadable entries
+      }
+    }
+  };
+  visit(bundleRootDir);
+  return artifacts;
+}
+
+/**
+ * Renames freshly produced installer bundles so local artifacts carry the
+ * build date and current commit id, e.g.
+ * `BitFun_0.2.17_20260922_d78c2cc_x64-setup.exe`. Skipped on GitHub Actions
+ * and when updater artifacts are enabled, because the release staging and
+ * updater manifest flows depend on the canonical Tauri bundle names.
+ */
+export function stampLocalBundleArtifacts(options = {}) {
+  const runtime = options.runtime ?? {};
+  const githubActions = runtime.githubActions ?? process.env.GITHUB_ACTIONS;
+  const updaterArtifactsEnabled = ['1', 'true', 'yes'].includes(
+    String(runtime.updaterArtifactsEnabled ?? process.env.BITFUN_ENABLE_UPDATER_ARTIFACTS ?? '').toLowerCase()
+  );
+  const args = options.args ?? [];
+  if (
+    githubActions === 'true' ||
+    updaterArtifactsEnabled ||
+    args.includes('--no-bundle')
+  ) {
+    return [];
+  }
+
+  const buildStartedAtMs = options.buildStartedAtMs ?? Date.now();
+  const desktopDir = options.desktopDir ?? join(ROOT, 'src', 'apps', 'desktop');
+  const configuredTargetDir = runtime.cargoTargetDir ?? process.env.CARGO_TARGET_DIR;
+  const targetDir = configuredTargetDir
+    ? (isAbsolute(configuredTargetDir)
+      ? configuredTargetDir
+      : resolve(desktopDir, configuredTargetDir))
+    : join(runtime.root ?? ROOT, 'target');
+  const triple = optionValue(args, '--target');
+  const profile = args.includes('--debug') ? 'debug' : optionValue(args, '--profile') || 'release';
+  const bundleRootDir = join(targetDir, ...(triple ? [triple] : []), profile, 'bundle');
+  const stamp = resolveBuildStamp(runtime);
+
+  const renamed = [];
+  for (const artifactPath of collectBundleArtifacts(bundleRootDir, buildStartedAtMs, runtime)) {
+    const nextName = buildStampBundleName(basename(artifactPath), stamp);
+    if (!nextName) {
+      continue;
+    }
+    const nextPath = join(dirname(artifactPath), nextName);
+    try {
+      renameSync(artifactPath, nextPath);
+      console.log(`[tauri-build] Stamped bundle: ${basename(artifactPath)} -> ${nextName}`);
+      renamed.push(nextPath);
+    } catch (error) {
+      console.warn(`[tauri-build] Failed to stamp ${basename(artifactPath)}: ${error.message || String(error)}`);
+    }
+  }
+  return renamed;
 }
 
 export function prepareTauriConfig(
