@@ -1395,11 +1395,17 @@ impl CoreSessionOperationsPort {
                 "source turn id is required",
             ));
         }
-        if !self
-            .coordinator
-            .get_session_manager()
-            .is_session_loaded_from_storage_path(storage_path, &source_session_id)
-            .map_err(runtime_port_error)?
+        let remote_edit_branch =
+            operation_id.is_some() && boundary == SessionBranchBoundary::BeforeTurn;
+        // A remote edit copies persisted history into a new Session. Restoring an
+        // unloaded source would unnecessarily claim its writer lease, which may
+        // still belong to another host even when the selected Turn is historical.
+        if !remote_edit_branch
+            && !self
+                .coordinator
+                .get_session_manager()
+                .is_session_loaded_from_storage_path(storage_path, &source_session_id)
+                .map_err(runtime_port_error)?
         {
             self.coordinator
                 .restore_session_from_storage_path(storage_path, &source_session_id)
@@ -1407,7 +1413,7 @@ impl CoreSessionOperationsPort {
                 .map_err(runtime_port_error)?;
         }
         // A stale/invalid edit target must not cancel otherwise valid work.
-        if operation_id.is_some() {
+        if remote_edit_branch {
             let turns = self
                 .persistence
                 .load_session_turns(storage_path, &source_session_id)
@@ -1436,21 +1442,20 @@ impl CoreSessionOperationsPort {
                 ));
             }
         }
-        let _maintenance =
-            if operation_id.is_some() && boundary == SessionBranchBoundary::BeforeTurn {
-                Some(
-                    self.scheduler
-                        .begin_session_maintenance(
-                            &source_session_id,
-                            storage_path,
-                            Duration::from_secs(30),
-                        )
-                        .await
-                        .map_err(runtime_port_error)?,
-                )
-            } else {
-                None
-            };
+        let _maintenance = if remote_edit_branch {
+            Some(
+                self.scheduler
+                    .begin_session_maintenance(
+                        &source_session_id,
+                        storage_path,
+                        Duration::from_secs(30),
+                    )
+                    .await
+                    .map_err(runtime_port_error)?,
+            )
+        } else {
+            None
+        };
         let session_manager = self.coordinator.get_session_manager();
         let _mutation_guard = session_manager
             .acquire_session_mutation(&source_session_id)
@@ -1459,10 +1464,29 @@ impl CoreSessionOperationsPort {
         session_manager
             .validate_session_storage_path_binding(&source_session_id, storage_path)
             .map_err(runtime_port_error)?;
-        self.coordinator
-            .reconcile_session_revert_locked(storage_path, &source_session_id)
-            .await
+        let source_loaded = session_manager
+            .is_session_loaded_from_storage_path(storage_path, &source_session_id)
             .map_err(runtime_port_error)?;
+        if remote_edit_branch && !source_loaded {
+            if let Some(state) = self
+                .persistence
+                .load_session_revert_state(storage_path, &source_session_id)
+                .await
+                .map_err(runtime_port_error)?
+            {
+                if state.phase != crate::agentic::session::revert::SessionRevertPhase::Staged {
+                    return Err(PortError::new(
+                        PortErrorKind::OutcomeUnknown,
+                        "Session history is unavailable until the unfinished undo transition is restored",
+                    ));
+                }
+            }
+        } else {
+            self.coordinator
+                .reconcile_session_revert_locked(storage_path, &source_session_id)
+                .await
+                .map_err(runtime_port_error)?;
+        }
         let revert_boundary = self
             .persistence
             .load_session_revert_state(storage_path, &source_session_id)
@@ -1474,6 +1498,17 @@ impl CoreSessionOperationsPort {
             .load_session_turns(storage_path, &source_session_id)
             .await
             .map_err(runtime_port_error)?;
+        if remote_edit_branch
+            && !source_loaded
+            && source_turns
+                .iter()
+                .any(|turn| turn.status == crate::service::session::TurnStatus::InProgress)
+        {
+            return Err(PortError::new(
+                PortErrorKind::NotAvailable,
+                "Cannot branch a Session while a Turn is still in progress",
+            ));
+        }
         let source_turn_id = match source_turn_id {
             Some(source_turn_id) => {
                 let source_turn = source_turns
@@ -2814,7 +2849,7 @@ mod tests {
                 max_active_sessions: 100,
                 session_idle_timeout: Duration::from_secs(3600),
                 auto_save_interval: Duration::from_secs(300),
-                enable_persistence: false,
+                enable_persistence: true,
                 prompt_cache_policy: PromptCachePolicy::default(),
             },
         ));
@@ -2899,6 +2934,13 @@ mod tests {
             .save_dialog_turn(&storage_path, &turn)
             .await
             .unwrap();
+        // A different runtime may keep the historical source open for writes.
+        // The edit branch must read it without trying to claim that lease.
+        let _source_writer = bitfun_services_core::session::SessionWriteLock::try_acquire(
+            &storage_path,
+            &source.session_id,
+        )
+        .expect("source writer owned by another runtime");
         let request = bitfun_agent_runtime::sdk::AgentSessionForkBeforeTurnRequest {
             operation_id: Some(Uuid::new_v4().to_string()),
             workspace_path: "/remote/project".into(),
@@ -2914,8 +2956,36 @@ mod tests {
             .fork_session_before_turn(request.clone())
             .await
             .expect("remote fork");
-        let retry = port.fork_session_before_turn(request).await.expect("retry");
+        let retry = port
+            .fork_session_before_turn(request.clone())
+            .await
+            .expect("retry");
         assert_eq!(first.session_id, retry.session_id);
+        let active_turn = DialogTurnData::new(
+            "active-turn".into(),
+            1,
+            source.session_id.clone(),
+            UserMessageData {
+                id: "active-user".into(),
+                content: "still running".into(),
+                timestamp: 2,
+                metadata: None,
+            },
+        );
+        persistence
+            .save_dialog_turn(&storage_path, &active_turn)
+            .await
+            .unwrap();
+        let mut active_request = request;
+        active_request.operation_id = Some(Uuid::new_v4().to_string());
+        let error = port
+            .fork_session_before_turn(active_request)
+            .await
+            .expect_err("another writer's active Turn cannot be edited");
+        assert_eq!(error.kind, PortErrorKind::NotAvailable);
+        assert!(!session_manager
+            .is_session_loaded_from_storage_path(&storage_path, &source.session_id)
+            .unwrap());
         let branch = persistence
             .load_session(&storage_path, &first.session_id)
             .await
@@ -2936,7 +3006,7 @@ mod tests {
                 .await
                 .unwrap()
                 .len(),
-            1
+            2
         );
     }
 
