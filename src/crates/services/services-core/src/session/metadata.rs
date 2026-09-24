@@ -509,6 +509,70 @@ mod tests {
     }
 
     #[test]
+    fn pin_state_round_trips_through_custom_metadata() {
+        let mut metadata = metadata();
+        metadata.custom_metadata = Some(json!({ "existing": true }));
+
+        set_session_pin_state(&mut metadata, true);
+
+        let pinned_at = session_pin_at(&metadata);
+        assert!(pinned_at.is_some_and(|value| value > 0));
+        assert_eq!(
+            metadata
+                .custom_metadata
+                .as_ref()
+                .and_then(|custom| custom.get("existing")),
+            Some(&json!(true)),
+            "pin must not drop unrelated custom metadata keys"
+        );
+
+        set_session_pin_state(&mut metadata, false);
+
+        assert_eq!(session_pin_at(&metadata), None);
+        assert_eq!(
+            metadata
+                .custom_metadata
+                .as_ref()
+                .and_then(|custom| custom.get("existing")),
+            Some(&json!(true))
+        );
+    }
+
+    #[test]
+    fn pin_state_without_custom_metadata_creates_and_clears_the_object() {
+        let mut metadata = metadata();
+        assert_eq!(metadata.custom_metadata, None);
+        assert_eq!(session_pin_at(&metadata), None);
+
+        set_session_pin_state(&mut metadata, true);
+        assert!(session_pin_at(&metadata).is_some());
+
+        set_session_pin_state(&mut metadata, false);
+        assert_eq!(metadata.custom_metadata, None);
+        assert_eq!(session_pin_at(&metadata), None);
+    }
+
+    #[test]
+    fn session_pin_at_reads_integer_and_fractional_timestamps_and_ignores_invalid_values() {
+        let mut metadata = metadata();
+
+        metadata.custom_metadata = Some(json!({ "pinnedAt": 1_700_000_000_000u64 }));
+        assert_eq!(session_pin_at(&metadata), Some(1_700_000_000_000));
+
+        metadata.custom_metadata = Some(json!({ "pinnedAt": 1_700_000_000_000.0 }));
+        assert_eq!(session_pin_at(&metadata), Some(1_700_000_000_000));
+
+        metadata.custom_metadata = Some(json!({ "pinnedAt": "not-a-number" }));
+        assert_eq!(session_pin_at(&metadata), None);
+
+        metadata.custom_metadata = Some(json!({ "pinnedAt": -5 }));
+        assert_eq!(session_pin_at(&metadata), None);
+
+        metadata.custom_metadata = Some(json!({}));
+        assert_eq!(session_pin_at(&metadata), None);
+    }
+
+    #[test]
     fn relationship_and_manifest_mutations_preserve_other_metadata() {
         let mut metadata = metadata();
         metadata.custom_metadata = Some(json!({ "existing": true }));
