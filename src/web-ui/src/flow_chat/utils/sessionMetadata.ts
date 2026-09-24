@@ -197,6 +197,24 @@ export function deriveLastFinishedAtFromMetadata(
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
+/**
+ * Sidebar grouping anchor for remote edit-rerun branches.
+ *
+ * Only branches carrying the backend `remoteEditOrigin` marker resolve to a
+ * parent; general fork copies keep rendering as top-level sessions. The
+ * backend anchors nested edits at the lineage root, so this is always a
+ * single hop.
+ */
+export function deriveForkOriginParentIdFromMetadata(
+  metadata?: Pick<SessionMetadata, 'customMetadata'> | null
+): string | undefined {
+  const customMetadata = metadata?.customMetadata;
+  if (!customMetadata?.remoteEditOrigin) {
+    return undefined;
+  }
+  return normalizeString(customMetadata.forkOrigin?.sessionId);
+}
+
 export function calculateSessionStats(
   session: Pick<
     Session,

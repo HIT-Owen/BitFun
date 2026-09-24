@@ -37,6 +37,11 @@ export interface SessionCustomMetadata extends Record<string, unknown> {
     turnIndex?: number | null;
     baseTitle?: string | null;
   } | null;
+  /** Marker for remote edit-rerun branches; sessionId/turnId identify the fork source turn. */
+  remoteEditOrigin?: {
+    sessionId?: string | null;
+    turnId?: string | null;
+  } | null;
   lastFinishedAt?: number | null;
   titleSource?: SessionTitleSource | null;
   titleKey?: string | null;

@@ -111,14 +111,33 @@ fn session_parent_id(metadata: &SessionMetadata) -> Option<String> {
         return Some(parent_id.to_string());
     }
 
-    metadata
-        .custom_metadata
-        .as_ref()
+    let custom = metadata.custom_metadata.as_ref();
+    if let Some(parent_id) = custom
         .and_then(|custom| {
             custom
                 .get("parentSessionId")
                 .or_else(|| custom.get("parent_session_id"))
         })
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+    {
+        return Some(parent_id);
+    }
+
+    // Remote edit-rerun branches record their fork source in `forkOrigin` and
+    // carry the `remoteEditOrigin` marker; branch creation resolves nested
+    // edits to the lineage root, so this link is always a single hop. Grouping
+    // keeps the rerun next to its source and keeps top-level counts honest.
+    let fork = custom.and_then(|custom| custom.get("forkOrigin"));
+    let is_edit_branch = custom
+        .and_then(|custom| custom.get("remoteEditOrigin"))
+        .is_some();
+    if !is_edit_branch {
+        return None;
+    }
+    fork.and_then(|fork| fork.get("sessionId"))
         .and_then(|value| value.as_str())
         .map(str::trim)
         .filter(|value| !value.is_empty())

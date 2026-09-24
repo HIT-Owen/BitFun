@@ -4,20 +4,22 @@ import { webcrypto } from 'node:crypto';
 const mocks = vi.hoisted(() => ({
   sessions: new Map(), rollback: vi.fn(), truncate: vi.fn(), emit: vi.fn(),
   capability: vi.fn(), fork: vi.fn(), turns: vi.fn(), pending: vi.fn(), transition: vi.fn(),
+  rename: vi.fn(), translate: vi.fn(),
 }));
 vi.mock('@/infrastructure/api', () => ({
   snapshotAPI: { rollbackToTurn: mocks.rollback },
   sessionAPI: { supportsRemoteMessageEdit: mocks.capability, loadSessionTurns: mocks.turns },
 }));
+vi.mock('@/infrastructure/i18n', () => ({ i18nService: { t: mocks.translate } }));
 vi.mock('@/infrastructure/event-bus', () => ({ globalEventBus: { emit: mocks.emit } }));
-vi.mock('@/shared/utils/logger', () => ({ createLogger: () => ({ info: vi.fn() }) }));
+vi.mock('@/shared/utils/logger', () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn() }) }));
 vi.mock('../store/FlowChatStore', () => ({ flowChatStore: {
   getState: () => ({ sessions: mocks.sessions }), truncateDialogTurnsFrom: mocks.truncate,
 } }));
-vi.mock('./FlowChatManager', () => ({ flowChatManager: { forkChatSession: mocks.fork } }));
+vi.mock('./FlowChatManager', () => ({ flowChatManager: { forkChatSession: mocks.fork, renameChatSessionTitle: mocks.rename } }));
 vi.mock('./flow-chat-manager/PendingQueueModule', () => ({ pendingQueueManager: { list: mocks.pending } }));
 vi.mock('../state-machine', () => ({ stateMachineManager: { getCurrentState: () => 'idle', transition: mocks.transition } }));
-import { describeUserMessageEditImpact, editAndRerunUserMessage } from './UserMessageEditService';
+import { composeRemoteEditBranchTitle, describeUserMessageEditImpact, editAndRerunUserMessage } from './UserMessageEditService';
 
 const request = () => ({ sessionId: 'source', turnId: 'turn-1', turnIndex: 0,
   originalContent: 'old', editedContent: 'new', rerun: vi.fn().mockResolvedValue(undefined) });
@@ -27,8 +29,10 @@ beforeEach(() => {
   const storage = new Map<string, string>();
   vi.stubGlobal('localStorage', { getItem: (key: string) => storage.get(key) ?? null,
     setItem: (key: string, value: string) => storage.set(key, value), removeItem: (key: string) => storage.delete(key) });
+  mocks.translate.mockImplementation((key: string) => (key.endsWith('editRerunBadge') ? 'Edited rerun' : 'Session'));
   mocks.sessions.clear();
   mocks.sessions.set('source', { workspacePath: '/work', remoteConnectionId: 'ssh-a', remoteSshHost: 'host-a', config: {},
+    title: 'Remote', titleSource: 'text',
     dialogTurns: [{ id: 'turn-1', userMessage: { content: 'old' } }] });
   mocks.pending.mockReturnValue([]);
   mocks.capability.mockResolvedValue(true);
@@ -85,5 +89,31 @@ describe('remote message edit', () => {
     expect(mocks.truncate).toHaveBeenCalledWith('source', 0);
     expect(mocks.fork).not.toHaveBeenCalled();
     expect(input.rerun).toHaveBeenCalledWith('new', undefined);
+  });
+
+  it('renames the branch with the localized edit-rerun suffix', async () => {
+    mocks.sessions.set('branch', { title: 'Remote (1)', titleSource: 'text' });
+    const input = request();
+    await editAndRerunUserMessage(input);
+    expect(mocks.rename).toHaveBeenCalledWith('branch', 'Remote · Edited rerun');
+    expect(input.rerun).toHaveBeenCalled();
+  });
+
+  it('skips the rename when the branch already carries the suffix and never blocks the rerun on it', async () => {
+    mocks.sessions.set('branch', { title: 'Remote · Edited rerun', titleSource: 'text' });
+    const input = request();
+    await editAndRerunUserMessage(input);
+    expect(mocks.rename).not.toHaveBeenCalled();
+
+    mocks.sessions.set('branch', { title: 'Remote (2)', titleSource: 'text' });
+    mocks.rename.mockRejectedValueOnce(new Error('rename failed'));
+    await editAndRerunUserMessage(request());
+    expect(mocks.rename).toHaveBeenCalled();
+    expect(input.rerun).toHaveBeenCalled();
+  });
+
+  it('collapses a previous suffix when re-editing inside an edit branch', () => {
+    expect(composeRemoteEditBranchTitle('Remote · Edited rerun')).toBe('Remote · Edited rerun');
+    expect(composeRemoteEditBranchTitle('Remote (2)')).toBe('Remote (2) · Edited rerun');
   });
 });

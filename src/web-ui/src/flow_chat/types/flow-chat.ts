@@ -462,6 +462,12 @@ export interface Session {
    */
   parentSessionId?: string;
 
+  /**
+   * For remote edit-rerun branch sessions: the source session the sidebar
+   * groups this branch under. Mirrors the backend `forkOrigin` anchor.
+   */
+  forkOriginParentId?: string;
+
   /** Session kind for UI grouping. */
   sessionKind: SessionKind;
 

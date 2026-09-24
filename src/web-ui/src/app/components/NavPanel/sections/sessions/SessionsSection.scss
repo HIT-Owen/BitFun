@@ -158,7 +158,8 @@
       }
     }
 
-    &.is-btw-child {
+    &.is-btw-child,
+    &.is-edit-child {
       &:hover,
       &.is-active {
         background: var(--bf-appearance-token-element-bg-soft);

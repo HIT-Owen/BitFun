@@ -2,13 +2,47 @@ use super::manager::PersistenceManager;
 use crate::agentic::core::{Session, SessionKind};
 use crate::util::errors::{BitFunError, BitFunResult};
 use bitfun_services_core::session::SessionBranchBoundary;
+use bitfun_services_core::session::SessionMetadata;
 use bitfun_services_core::session::{
     build_branched_session_metadata, format_branch_session_name, resolve_branch_session_lineage,
     BranchSessionMetadataFacts,
 };
 pub use bitfun_services_core::session::{SessionBranchRequest, SessionBranchResult};
+use std::collections::HashSet;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Resolves the session id that a remote edit branch should anchor to for list
+/// grouping. Re-editing inside an existing edit branch copies history from that
+/// branch, but grouping stays a single hop by anchoring every edit branch of a
+/// lineage at its root source session.
+fn resolve_remote_edit_group_root(
+    metadata_list: &[SessionMetadata],
+    source_session_id: &str,
+) -> String {
+    let mut root = source_session_id.to_string();
+    let mut visited = HashSet::new();
+    visited.insert(root.clone());
+    while let Some(parent_id) = metadata_list
+        .iter()
+        .find(|metadata| metadata.session_id == root)
+        .and_then(|metadata| {
+            let custom = metadata.custom_metadata.as_ref()?;
+            if custom.get("remoteEditOrigin").is_none() {
+                return None;
+            }
+            custom
+                .get("forkOrigin")?
+                .get("sessionId")?
+                .as_str()
+                .map(str::to_string)
+        })
+        .filter(|parent_id| !parent_id.trim().is_empty() && visited.insert(parent_id.clone()))
+    {
+        root = parent_id;
+    }
+    root
+}
 
 impl PersistenceManager {
     pub(crate) async fn existing_edit_branch(
@@ -250,8 +284,17 @@ impl PersistenceManager {
             });
 
             if operation_id.is_some() {
+                let group_root =
+                    resolve_remote_edit_group_root(&metadata_list, &request.source_session_id);
                 let metadata = branched_metadata.custom_metadata.get_or_insert_with(|| serde_json::json!({}));
-                metadata.as_object_mut().ok_or_else(|| BitFunError::Validation("Branch metadata must be an object".into()))?.insert("remoteEditOrigin".into(), serde_json::json!({"sessionId": request.source_session_id, "turnId": request.source_turn_id}));
+                let metadata = metadata.as_object_mut().ok_or_else(|| BitFunError::Validation("Branch metadata must be an object".into()))?;
+                if let Some(fork_origin) = metadata.get_mut("forkOrigin").and_then(|value| value.as_object_mut()) {
+                    fork_origin.insert(
+                        "sessionId".into(),
+                        serde_json::Value::String(group_root),
+                    );
+                }
+                metadata.insert("remoteEditOrigin".into(), serde_json::json!({"sessionId": request.source_session_id, "turnId": request.source_turn_id}));
             }
             self.save_session_metadata(workspace_path, &branched_metadata)
                 .await?;
@@ -366,6 +409,73 @@ mod tests {
             .save_session_metadata(workspace_path, &metadata)
             .await
             .expect("renamed metadata should save");
+    }
+
+    #[tokio::test]
+    async fn nested_remote_edit_branch_anchors_grouping_at_the_lineage_root() {
+        let workspace = TestWorkspace::new();
+        let manager = PersistenceManager::new(workspace.path_manager()).unwrap();
+        let mut source = Session::new("Remote".into(), "agentic".into(), Default::default());
+        source.config.workspace_path = Some("/work/project".into());
+        source.config.remote_connection_id = Some("connection-a".into());
+        manager
+            .save_session(workspace.path(), &source)
+            .await
+            .unwrap();
+        for (index, id) in ["kept", "edited", "discarded"].into_iter().enumerate() {
+            manager
+                .save_dialog_turn(
+                    workspace.path(),
+                    &build_turn(&source.session_id, id, index, id),
+                )
+                .await
+                .unwrap();
+        }
+
+        let first_operation = uuid::Uuid::new_v4().to_string();
+        let first_branch = manager
+            .branch_session_with_operation(
+                workspace.path(),
+                &SessionBranchRequest {
+                    source_session_id: source.session_id.clone(),
+                    source_turn_id: "edited".into(),
+                    boundary: SessionBranchBoundary::BeforeTurn,
+                },
+                Some(&first_operation),
+            )
+            .await
+            .unwrap();
+
+        let second_operation = uuid::Uuid::new_v4().to_string();
+        let second_branch = manager
+            .branch_session_with_operation(
+                workspace.path(),
+                &SessionBranchRequest {
+                    source_session_id: first_branch.session_id.clone(),
+                    source_turn_id: "kept".into(),
+                    boundary: SessionBranchBoundary::BeforeTurn,
+                },
+                Some(&second_operation),
+            )
+            .await
+            .unwrap();
+
+        let second_metadata = manager
+            .load_session_metadata(workspace.path(), &second_branch.session_id)
+            .await
+            .unwrap()
+            .expect("second branch metadata should exist");
+        let custom = second_metadata
+            .custom_metadata
+            .expect("branch custom metadata");
+        assert_eq!(
+            custom["forkOrigin"]["sessionId"], source.session_id,
+            "grouping anchor must resolve to the lineage root"
+        );
+        assert_eq!(
+            custom["remoteEditOrigin"]["sessionId"], first_branch.session_id,
+            "idempotency identity keeps the immediate source"
+        );
     }
 
     #[tokio::test]

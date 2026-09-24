@@ -38,6 +38,7 @@ import { stateMachineManager } from '@/flow_chat/state-machine';
 import { SessionExecutionState } from '@/flow_chat/state-machine/types';
 import { i18nService } from '@/infrastructure/i18n';
 import { resolveSessionTitle } from '@/flow_chat/utils/sessionTitle';
+import { remoteEditBranchTitleSuffix } from '@/flow_chat/services/UserMessageEditService';
 import { isSessionNavRowActive } from './sessionNavSelection';
 import {
   deriveSessionReviewActivity,
@@ -128,6 +129,11 @@ const countTopLevelSessionsInScope = (
   return scopedSessions.reduce((count, session) => {
     const parentSessionId = resolveSessionRelationship(session).parentSessionId;
     if (parentSessionId && knownIds.has(parentSessionId)) {
+      return count;
+    }
+    // Remote edit-rerun branches nest under their fork source when it is in
+    // the same list, mirroring the backend metadata page grouping.
+    if (session.forkOriginParentId && knownIds.has(session.forkOriginParentId)) {
       return count;
     }
     return count + 1;
@@ -641,10 +647,17 @@ const SessionsSection: React.FC<SessionsSectionProps> = ({
 
     for (const s of sessions) {
       const pid = resolveSessionRelationship(s).parentSessionId;
-      if (pid && typeof pid === 'string' && pid.trim() && knownIds.has(pid)) {
-        const list = childMap.get(pid) || [];
+      const editForkParentId = s.forkOriginParentId;
+      const nestedParentId =
+        pid && typeof pid === 'string' && pid.trim() && knownIds.has(pid)
+          ? pid
+          : editForkParentId && knownIds.has(editForkParentId)
+            ? editForkParentId
+            : undefined;
+      if (nestedParentId) {
+        const list = childMap.get(nestedParentId) || [];
         list.push(s);
-        childMap.set(pid, list);
+        childMap.set(nestedParentId, list);
       } else {
         parents.push(s);
       }
@@ -1193,6 +1206,19 @@ const SessionsSection: React.FC<SessionsSectionProps> = ({
           const relationship = resolveSessionRelationship(session);
           const isChildSession = level === 1 && relationship.displayAsChild;
           const childSessionBadge = getChildSessionBadge(relationship.kind);
+          // Remote edit-rerun branches group under their fork source without a
+          // relationship kind; the badge only shows when the title does not
+          // already carry the localized edit-rerun suffix.
+          const isEditForkChild = level === 1 && !isChildSession && Boolean(session.forkOriginParentId);
+          const editForkParentSession = isEditForkChild && session.forkOriginParentId
+            ? flowChatState.sessions.get(session.forkOriginParentId)
+            : undefined;
+          const editForkParentTitle = editForkParentSession
+            ? resolveSessionTitle(editForkParentSession)
+            : '';
+          const editForkTitleSuffix = ` · ${remoteEditBranchTitleSuffix()}`;
+          const showEditForkBadge = isEditForkChild
+            && !resolveSessionTitle(session).endsWith(editForkTitleSuffix);
           const parentReviewActivity = deriveSessionReviewActivity(
             flowChatState,
             session.sessionId,
@@ -1262,6 +1288,7 @@ const SessionsSection: React.FC<SessionsSectionProps> = ({
           const showRichTooltip =
             showAssistantInTooltip ||
             isChildSession ||
+            isEditForkChild ||
             showBackgroundSubagentActivity ||
             isDispatched;
           const tooltipContent = showRichTooltip ? (
@@ -1281,6 +1308,13 @@ const SessionsSection: React.FC<SessionsSectionProps> = ({
                       })
                     : t('nav.sessions.childSourceWithoutTurn', {
                         parentTitle: parentTitle || t('nav.sessions.parentSession'),
+                  })}
+                </div>
+              ) : null}
+              {isEditForkChild ? (
+                <div className="bitfun-nav-panel__inline-item-tooltip-meta">
+                  {t('nav.sessions.editRerunSource', {
+                    parentTitle: editForkParentTitle || t('nav.sessions.parentSession'),
                   })}
                 </div>
               ) : null}
@@ -1336,6 +1370,7 @@ const SessionsSection: React.FC<SessionsSectionProps> = ({
                 'bitfun-nav-panel__inline-item',
                 level === 1 && 'is-child',
                 isChildSession && 'is-btw-child',
+                isEditForkChild && 'is-edit-child',
                 isRowActive && 'is-active',
                 isEditing && 'is-editing',
                 openMenuSessionId === session.sessionId && 'is-menu-open',
@@ -1460,6 +1495,11 @@ const SessionsSection: React.FC<SessionsSectionProps> = ({
                     <span className="bitfun-nav-panel__inline-item-label">{sessionTitle}</span>
                     {isChildSession ? (
                       <span className="bitfun-nav-panel__inline-item-btw-badge">{childSessionBadge}</span>
+                    ) : null}
+                    {showEditForkBadge ? (
+                      <span className="bitfun-nav-panel__inline-item-btw-badge">
+                        {remoteEditBranchTitleSuffix()}
+                      </span>
                     ) : null}
                     {isDispatched ? (
                       <span

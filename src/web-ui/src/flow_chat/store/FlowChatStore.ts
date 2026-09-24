@@ -52,6 +52,7 @@ import {
 import type { SessionMetadataPage } from '@/infrastructure/api/service-api/SessionAPI';
 import {
   deriveLastFinishedAtFromMetadata,
+  deriveForkOriginParentIdFromMetadata,
   deriveSessionRelationshipFromMetadata,
   normalizeSessionRelationship,
 } from '../utils/sessionMetadata';
@@ -4429,6 +4430,19 @@ export class FlowChatStore {
     });
   }
 
+  /** Marks an in-memory session as a remote edit-rerun branch of `parentSessionId`. */
+  public updateSessionForkOriginParent(sessionId: string, parentSessionId: string): void {
+    this.setState(prev => {
+      const session = prev.sessions.get(sessionId);
+      if (!session) return prev;
+
+      const next: Session = { ...session, forkOriginParentId: parentSessionId };
+      const newSessions = new Map(prev.sessions);
+      newSessions.set(sessionId, next);
+      return { ...prev, sessions: newSessions };
+    });
+  }
+
   public addBtwThreadMarker(
     parentSessionId: string,
     marker: {
@@ -6368,6 +6382,7 @@ export class FlowChatStore {
         }
 
         const relationship = deriveSessionRelationshipFromMetadata(metadata);
+        const forkOriginParentId = deriveForkOriginParentIdFromMetadata(metadata);
         const lastFinishedAt = deriveLastFinishedAtFromMetadata(metadata);
         const titleState = deriveSessionTitleStateFromMetadata(metadata);
         const hasDynamicDefaultTitle = titleState.titleSource === 'i18n';
@@ -6431,6 +6446,7 @@ export class FlowChatStore {
             remoteSshHost: remoteScope.remoteSshHost,
             workspaceHostname: metadata.workspaceHostname,
             parentSessionId: relationship.parentSessionId,
+            forkOriginParentId,
             sessionKind: relationship.sessionKind,
             parentToolCallId: relationship.parentToolCallId,
             subagentType: relationship.subagentType,
@@ -6751,6 +6767,7 @@ export class FlowChatStore {
           }
 
           const relationship = deriveSessionRelationshipFromMetadata(metadata);
+          const forkOriginParentId = deriveForkOriginParentIdFromMetadata(metadata);
           const lastFinishedAt = deriveLastFinishedAtFromMetadata(metadata);
           const titleState = deriveSessionTitleStateFromMetadata(metadata);
           const hasDynamicDefaultTitle = titleState.titleSource === 'i18n';
@@ -6811,6 +6828,7 @@ export class FlowChatStore {
               remoteSshHost: remoteScope.remoteSshHost,
               workspaceHostname: metadata.workspaceHostname,
               parentSessionId: relationship.parentSessionId,
+              forkOriginParentId,
               sessionKind: relationship.sessionKind,
               parentToolCallId: relationship.parentToolCallId,
               subagentType: relationship.subagentType,

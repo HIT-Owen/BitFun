@@ -952,6 +952,16 @@ export async function forkChatSession(
     context.flowChatStore.switchSession(response.sessionId);
   }
 
+  // Edit-rerun branches (operation-scoped forks) group under their source in
+  // the sidebar; nested edits anchor at the lineage root, mirroring the
+  // backend `forkOrigin` contract. General forks stay top-level.
+  if (operationId) {
+    context.flowChatStore.updateSessionForkOriginParent(
+      response.sessionId,
+      sourceSession.forkOriginParentId ?? sourceSessionId,
+    );
+  }
+
   await context.flowChatStore.loadSessionHistory(
     response.sessionId,
     projectWorkspacePath,

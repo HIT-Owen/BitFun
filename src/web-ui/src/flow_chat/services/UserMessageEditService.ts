@@ -1,4 +1,5 @@
 import { snapshotAPI, sessionAPI } from '@/infrastructure/api';
+import { i18nService } from '@/infrastructure/i18n';
 import { globalEventBus } from '@/infrastructure/event-bus';
 import { createLogger } from '@/shared/utils/logger';
 import { flowChatStore } from '../store/FlowChatStore';
@@ -7,9 +8,34 @@ import { stateMachineManager } from '../state-machine';
 import { SessionExecutionEvent, SessionExecutionState } from '../state-machine/types';
 import { isRemoteWorkspaceSession, requireSessionProjectWorkspacePath } from '../utils/sessionWorkspace';
 import { acpAgentTypeFromSession, isAcpAgentType } from '../utils/acpSession';
+import { resolveSessionTitle } from '../utils/sessionTitle';
 
 const activeEdits = new Set<string>();
 const log = createLogger('UserMessageEditService');
+
+const REMOTE_EDIT_TITLE_SEPARATOR = ' · ';
+
+/** Localized suffix used for remote edit-rerun branch session titles. */
+export function remoteEditBranchTitleSuffix(): string {
+  return i18nService.t('common:nav.sessions.editRerunBadge');
+}
+
+/**
+ * Builds the branch title from the source title. Re-editing inside a branch
+ * collapses the previous suffix instead of accumulating repeated labels.
+ */
+export function composeRemoteEditBranchTitle(sourceTitle: string): string {
+  const suffix = remoteEditBranchTitleSuffix();
+  const separator = REMOTE_EDIT_TITLE_SEPARATOR;
+  let base = sourceTitle.trim();
+  while (base.endsWith(separator + suffix)) {
+    base = base.slice(0, base.length - (separator + suffix).length).trim();
+  }
+  if (!base) {
+    return suffix;
+  }
+  return `${base}${separator}${suffix}`;
+}
 
 export interface UserMessageEditImpact {
   willStopRunningTask: boolean;
@@ -118,6 +144,21 @@ async function performEditAndRerun(request: EditAndRerunUserMessageRequest): Pro
     localStorage.setItem(key, operationId);
     const { flowChatManager } = await import('./FlowChatManager');
     const targetSessionId = await flowChatManager.forkChatSession(request.sessionId, request.turnId, operationId);
+    const translate = (key: string, options?: Record<string, unknown>) => i18nService.t(key, options);
+    const desiredBranchTitle = composeRemoteEditBranchTitle(resolveSessionTitle(session, translate));
+    const branchedSession = flowChatStore.getState().sessions.get(targetSessionId);
+    if (branchedSession && resolveSessionTitle(branchedSession, translate) !== desiredBranchTitle) {
+      // Naming is presentation-only: a failed rename leaves the default
+      // "(N)" branch title and must not block the rerun.
+      try {
+        await flowChatManager.renameChatSessionTitle(targetSessionId, desiredBranchTitle);
+      } catch (renameError) {
+        log.warn('Failed to rename remote edit branch session', {
+          sessionId: targetSessionId,
+          error: renameError,
+        });
+      }
+    }
     const rerunTurnId = `remote-edit-${operationId}`;
     const persistedTurns = await sessionAPI.loadSessionTurns(
       targetSessionId, requireSessionProjectWorkspacePath(session, request.sessionId), undefined,

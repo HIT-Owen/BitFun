@@ -68,3 +68,62 @@ fn session_page_cursor_loads_next_top_level_window() {
     assert_eq!(second_page.loaded_top_level_count, 1);
     assert_eq!(second_page.sessions[0].session_id, "parent-2");
 }
+
+#[test]
+fn session_page_nests_remote_edit_branches_under_their_fork_source() {
+    let mut source = metadata("source", 1_000);
+    let mut edit_branch = metadata("edit-branch", 2_000);
+    edit_branch.custom_metadata = Some(serde_json::json!({
+        "forkOrigin": {
+            "sessionId": "source",
+            "turnId": "turn-1",
+            "turnIndex": 1,
+            "baseTitle": "source"
+        },
+        "remoteEditOrigin": {
+            "sessionId": "source",
+            "turnId": "turn-1"
+        }
+    }));
+    let mut plain_fork = metadata("plain-fork", 3_000);
+    plain_fork.custom_metadata = Some(serde_json::json!({
+        "forkOrigin": {
+            "sessionId": "source",
+            "turnId": "turn-0",
+            "turnIndex": 1,
+            "baseTitle": "source"
+        }
+    }));
+
+    let page = build_session_metadata_page(vec![plain_fork, edit_branch, source], None, 10);
+
+    let session_ids = page
+        .sessions
+        .iter()
+        .map(|metadata| metadata.session_id.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(session_ids, vec!["plain-fork", "source", "edit-branch"]);
+    assert_eq!(page.total_top_level_count, 2);
+}
+
+#[test]
+fn session_page_keeps_edit_branch_top_level_when_its_source_is_missing() {
+    let mut edit_branch = metadata("edit-branch", 2_000);
+    edit_branch.custom_metadata = Some(serde_json::json!({
+        "forkOrigin": {
+            "sessionId": "deleted-source",
+            "turnId": "turn-1",
+            "turnIndex": 1,
+            "baseTitle": "deleted-source"
+        },
+        "remoteEditOrigin": {
+            "sessionId": "deleted-source",
+            "turnId": "turn-1"
+        }
+    }));
+
+    let page = build_session_metadata_page(vec![edit_branch], None, 10);
+
+    assert_eq!(page.total_top_level_count, 1);
+    assert_eq!(page.sessions[0].session_id, "edit-branch");
+}

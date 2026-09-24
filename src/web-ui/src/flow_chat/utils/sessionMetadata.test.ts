@@ -11,6 +11,7 @@ vi.mock('@/infrastructure/i18n/core/I18nService', () => ({
 import {
   buildCreateSessionRelationship,
   buildSessionMetadata,
+  deriveForkOriginParentIdFromMetadata,
   deriveLastFinishedAtFromMetadata,
   deriveSessionRelationshipFromMetadata,
   normalizeSessionRelationship,
@@ -290,6 +291,34 @@ describe('sessionMetadata', () => {
       canOpenInAuxPane: false,
       origin: undefined,
     });
+  });
+
+  it('derives the sidebar grouping anchor only for remote edit-rerun branches', () => {
+    expect(deriveForkOriginParentIdFromMetadata({
+      customMetadata: {
+        forkOrigin: { sessionId: 'source-1', turnIndex: 1, baseTitle: 'Source' },
+        remoteEditOrigin: { sessionId: 'source-1', turnId: 'turn-1' },
+      },
+    })).toBe('source-1');
+
+    expect(deriveForkOriginParentIdFromMetadata({
+      customMetadata: {
+        forkOrigin: { sessionId: 'source-1', turnIndex: 1, baseTitle: 'Source' },
+      },
+    })).toBeUndefined();
+
+    expect(deriveForkOriginParentIdFromMetadata({
+      customMetadata: { remoteEditOrigin: { sessionId: 'source-1', turnId: 'turn-1' } },
+    })).toBeUndefined();
+
+    expect(deriveForkOriginParentIdFromMetadata({
+      customMetadata: {
+        forkOrigin: { sessionId: '  ', baseTitle: 'Source' },
+        remoteEditOrigin: { sessionId: 'source-1', turnId: 'turn-1' },
+      },
+    })).toBeUndefined();
+
+    expect(deriveForkOriginParentIdFromMetadata(null)).toBeUndefined();
   });
 
   it('round-trips review child identity without treating it as a side question', () => {
