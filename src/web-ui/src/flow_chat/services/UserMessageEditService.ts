@@ -1,11 +1,14 @@
-import { snapshotAPI } from '@/infrastructure/api';
+import { snapshotAPI, sessionAPI } from '@/infrastructure/api';
 import { globalEventBus } from '@/infrastructure/event-bus';
 import { createLogger } from '@/shared/utils/logger';
 import { flowChatStore } from '../store/FlowChatStore';
 import { pendingQueueManager } from './flow-chat-manager/PendingQueueModule';
 import { stateMachineManager } from '../state-machine';
 import { SessionExecutionEvent, SessionExecutionState } from '../state-machine/types';
+import { isRemoteWorkspaceSession, requireSessionProjectWorkspacePath } from '../utils/sessionWorkspace';
+import { acpAgentTypeFromSession, isAcpAgentType } from '../utils/acpSession';
 
+const activeEdits = new Set<string>();
 const log = createLogger('UserMessageEditService');
 
 export interface UserMessageEditImpact {
@@ -13,6 +16,7 @@ export interface UserMessageEditImpact {
   willRestoreFiles: boolean;
   willDeleteTurns: boolean;
   willRerun: boolean;
+  willBranch: boolean;
 }
 
 export interface EditAndRerunUserMessageRequest {
@@ -22,17 +26,19 @@ export interface EditAndRerunUserMessageRequest {
   originalContent: string;
   editedContent: string;
   agentType?: string;
-  rerun: (content: string, agentType?: string) => Promise<void>;
+  rerun: (content: string, agentType?: string, targetSessionId?: string, turnId?: string) => Promise<void>;
 }
 
 export function describeUserMessageEditImpact(sessionId: string): UserMessageEditImpact {
   const currentState = stateMachineManager.getCurrentState(sessionId);
+  const remote = isRemoteWorkspaceSession(flowChatStore.getState().sessions.get(sessionId), null);
   return {
     willStopRunningTask:
-      currentState === SessionExecutionState.PROCESSING ||
+      remote || currentState === SessionExecutionState.PROCESSING ||
       currentState === SessionExecutionState.FINISHING,
-    willRestoreFiles: true,
-    willDeleteTurns: true,
+    willRestoreFiles: !remote,
+    willDeleteTurns: !remote,
+    willBranch: remote,
     willRerun: true,
   };
 }
@@ -52,7 +58,6 @@ export function canEditUserMessage(request: {
       !request.hasImages &&
       !request.isUsageReportMessage &&
       !request.steeringStatus &&
-      !request.isRemoteSession &&
       !request.isSubmitting,
   );
 }
@@ -60,6 +65,16 @@ export function canEditUserMessage(request: {
 export async function editAndRerunUserMessage(
   request: EditAndRerunUserMessageRequest,
 ): Promise<void> {
+  if (activeEdits.has(request.sessionId)) throw new Error('A message edit is already in progress');
+  activeEdits.add(request.sessionId);
+  try {
+    await performEditAndRerun(request);
+  } finally {
+    activeEdits.delete(request.sessionId);
+  }
+}
+
+async function performEditAndRerun(request: EditAndRerunUserMessageRequest): Promise<void> {
   const trimmedEditedContent = request.editedContent.trim();
   if (!trimmedEditedContent) {
     throw new Error('Edited message cannot be empty');
@@ -86,6 +101,34 @@ export async function editAndRerunUserMessage(
 
   if (pendingQueueManager.list(request.sessionId).length > 0) {
     throw new Error('Edit the message after clearing the pending queue');
+  }
+
+  if (isRemoteWorkspaceSession(session, null)) {
+    if (acpAgentTypeFromSession(session) || isAcpAgentType(request.agentType)) {
+      throw new Error('Remote message editing is not supported for external ACP sessions');
+    }
+    if (!(await sessionAPI.supportsRemoteMessageEdit())) {
+      throw new Error('This execution host does not support remote message branching. Update the host before retrying.');
+    }
+    // Retain the operation on uncertain failure; only a digest and UUID are stored.
+    const identity = JSON.stringify([session.remoteConnectionId, session.remoteSshHost, session.workspacePath, request.sessionId, request.turnId, request.editedContent]);
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(identity));
+    const key = `bitfun:remote-message-edit:${Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('')}`;
+    const operationId = localStorage.getItem(key) ?? crypto.randomUUID();
+    localStorage.setItem(key, operationId);
+    const { flowChatManager } = await import('./FlowChatManager');
+    const targetSessionId = await flowChatManager.forkChatSession(request.sessionId, request.turnId, operationId);
+    const rerunTurnId = `remote-edit-${operationId}`;
+    const persistedTurns = await sessionAPI.loadSessionTurns(
+      targetSessionId, requireSessionProjectWorkspacePath(session, request.sessionId), undefined,
+      session.remoteConnectionId ?? session.config.remoteConnectionId,
+      session.remoteSshHost ?? session.config.remoteSshHost,
+    );
+    if (!persistedTurns.some(turn => turn.turnId === rerunTurnId)) {
+      await request.rerun(trimmedEditedContent, request.agentType, targetSessionId, rerunTurnId);
+    }
+    localStorage.removeItem(key);
+    return;
   }
 
   const currentState = stateMachineManager.getCurrentState(request.sessionId);

@@ -1107,6 +1107,7 @@ impl TuiAgentClient {
                 self.backend
                     .fork_session_before_turn(ForkSessionBeforeTurnRequest(
                         bitfun_runtime_ports::AgentSessionForkBeforeTurnRequest {
+                            operation_id: None,
                             workspace_path: self.project_workspace_path_string(),
                             source_session_id,
                             source_turn_id: source_turn_id.to_string(),

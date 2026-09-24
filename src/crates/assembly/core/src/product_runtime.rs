@@ -1362,7 +1362,30 @@ impl CoreSessionOperationsPort {
         source_session_id: String,
         source_turn_id: Option<String>,
         boundary: SessionBranchBoundary,
+        operation_id: Option<String>,
     ) -> PortResult<AgentSessionForkResult> {
+        if let (Some(id), Some(turn_id)) = (operation_id.as_deref(), source_turn_id.as_ref()) {
+            if let Some(result) = self
+                .persistence
+                .existing_edit_branch(
+                    storage_path,
+                    &SessionBranchRequest {
+                        source_session_id: source_session_id.clone(),
+                        source_turn_id: turn_id.clone(),
+                        boundary,
+                    },
+                    id,
+                )
+                .await
+                .map_err(runtime_port_error)?
+            {
+                return Ok(AgentSessionForkResult {
+                    session_id: result.session_id,
+                    session_name: result.session_name,
+                    agent_type: result.agent_type,
+                });
+            }
+        }
         if source_turn_id
             .as_deref()
             .is_some_and(|id| id.trim().is_empty())
@@ -1383,6 +1406,51 @@ impl CoreSessionOperationsPort {
                 .await
                 .map_err(runtime_port_error)?;
         }
+        // A stale/invalid edit target must not cancel otherwise valid work.
+        if operation_id.is_some() {
+            let turns = self
+                .persistence
+                .load_session_turns(storage_path, &source_session_id)
+                .await
+                .map_err(runtime_port_error)?;
+            let target = turns
+                .iter()
+                .find(|turn| Some(&turn.turn_id) == source_turn_id.as_ref())
+                .ok_or_else(|| {
+                    PortError::new(
+                        PortErrorKind::NotFound,
+                        "Message edit target is no longer available",
+                    )
+                })?;
+            if target
+                .user_message
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("triggerSource"))
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|source| source != "desktop_ui")
+            {
+                return Err(PortError::new(
+                    PortErrorKind::NotAvailable,
+                    "Only messages sent from the desktop chat input can be edited",
+                ));
+            }
+        }
+        let _maintenance =
+            if operation_id.is_some() && boundary == SessionBranchBoundary::BeforeTurn {
+                Some(
+                    self.scheduler
+                        .begin_session_maintenance(
+                            &source_session_id,
+                            storage_path,
+                            Duration::from_secs(30),
+                        )
+                        .await
+                        .map_err(runtime_port_error)?,
+                )
+            } else {
+                None
+            };
         let session_manager = self.coordinator.get_session_manager();
         let _mutation_guard = session_manager
             .acquire_session_mutation(&source_session_id)
@@ -1440,16 +1508,25 @@ impl CoreSessionOperationsPort {
         let source_session_id_for_coordination = source_session_id.clone();
         let result = self
             .persistence
-            .branch_session(
+            .branch_session_with_operation(
                 storage_path,
                 &SessionBranchRequest {
                     source_session_id,
                     source_turn_id,
                     boundary,
                 },
+                operation_id.as_deref(),
             )
             .await
             .map_err(runtime_port_error)?;
+        // Remote edit branches inherit no discarded subagent coordination state.
+        if operation_id.is_some() {
+            return Ok(AgentSessionForkResult {
+                session_id: result.session_id,
+                session_name: result.session_name,
+                agent_type: result.agent_type,
+            });
+        }
         if let Err(error) = self
             .coordinator
             .initialize_fork_coordination(&source_session_id_for_coordination, &result.session_id)
@@ -1756,6 +1833,7 @@ impl AgentSessionForkPort for CoreSessionOperationsPort {
             source_session_id,
             None,
             SessionBranchBoundary::ThroughTurn,
+            None,
         )
         .await
     }
@@ -1787,6 +1865,7 @@ impl AgentSessionForkPort for CoreSessionOperationsPort {
             request.source_session_id,
             Some(request.source_turn_id),
             SessionBranchBoundary::ThroughTurn,
+            None,
         )
         .await
     }
@@ -1795,10 +1874,21 @@ impl AgentSessionForkPort for CoreSessionOperationsPort {
         &self,
         request: AgentSessionForkBeforeTurnRequest,
     ) -> PortResult<AgentSessionForkResult> {
-        validate_local_fork_scope(
-            request.remote_connection_id.as_deref(),
-            request.remote_ssh_host.as_deref(),
-        )?;
+        let is_remote = request.remote_connection_id.is_some() || request.remote_ssh_host.is_some();
+        if is_remote && request.operation_id.is_none() {
+            return Err(PortError::new(
+                PortErrorKind::NotAvailable,
+                "Remote edit branching requires an idempotent operation id",
+            ));
+        }
+        if let Some(id) = &request.operation_id {
+            uuid::Uuid::parse_str(id).map_err(|_| {
+                PortError::new(
+                    PortErrorKind::InvalidRequest,
+                    "Branch operation id must be a UUID",
+                )
+            })?;
+        }
         self.coordinator
             .ensure_workspace_runtime_ownership(
                 Path::new(&request.workspace_path),
@@ -1808,16 +1898,46 @@ impl AgentSessionForkPort for CoreSessionOperationsPort {
             .map_err(runtime_port_error)?;
         let storage_path = self
             .resolve_session_storage_path(
-                request.workspace_path,
-                request.remote_connection_id,
-                request.remote_ssh_host,
+                request.workspace_path.clone(),
+                request.remote_connection_id.clone(),
+                request.remote_ssh_host.clone(),
             )
             .await?;
+        if is_remote {
+            let source = self
+                .persistence
+                .load_session(&storage_path, &request.source_session_id)
+                .await
+                .map_err(runtime_port_error)?;
+            if source.kind != bitfun_core_types::SessionKind::Standard
+                || source.config.agent_route_owner
+                    != bitfun_core_types::SessionAgentRouteOwner::Local
+                || source.agent_type.trim().starts_with("acp:")
+            {
+                return Err(PortError::new(PortErrorKind::NotAvailable, "Remote message editing requires a standard BitFun Agent session; external and child sessions are unsupported"));
+            }
+            let project = source
+                .config
+                .project_workspace_path
+                .as_ref()
+                .or(source.config.workspace_path.as_ref());
+            if source.config.remote_connection_id != request.remote_connection_id
+                || project != Some(&request.workspace_path)
+                || (source.config.remote_ssh_host.is_some()
+                    && source.config.remote_ssh_host != request.remote_ssh_host)
+            {
+                return Err(PortError::new(
+                    PortErrorKind::InvalidRequest,
+                    "Remote branch workspace identity does not match the source session",
+                ));
+            }
+        }
         self.fork_at_persisted_turn(
             &storage_path,
             request.source_session_id,
             Some(request.source_turn_id),
             SessionBranchBoundary::BeforeTurn,
+            request.operation_id,
         )
         .await
     }
@@ -2673,11 +2793,162 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn remote_edit_fork_uses_remote_storage_and_rejects_wrong_identity() {
+        let workspace = TestWorkspace::new();
+        let workspace_root = workspace.path().join("project");
+        std::fs::create_dir_all(&workspace_root).expect("workspace root");
+        let path_manager = workspace.path_manager();
+        let _runtime_guard = set_workspace_runtime_service_for_current_test(Arc::new(
+            WorkspaceRuntimeService::new(path_manager.clone()),
+        ));
+        let storage_path = WorkspaceRuntimeService::new(path_manager.clone())
+            .context_for_remote_workspace("branch-test-host", "/remote/project")
+            .sessions_dir;
+        std::fs::create_dir_all(&storage_path).expect("resolved session storage");
+        let persistence =
+            Arc::new(PersistenceManager::new(path_manager).expect("persistence manager"));
+        let session_manager = Arc::new(SessionManager::new(
+            Arc::new(SessionContextStore::new()),
+            persistence.clone(),
+            SessionManagerConfig {
+                max_active_sessions: 100,
+                session_idle_timeout: Duration::from_secs(3600),
+                auto_save_interval: Duration::from_secs(300),
+                enable_persistence: false,
+                prompt_cache_policy: PromptCachePolicy::default(),
+            },
+        ));
+        let event_queue = Arc::new(EventQueue::new(EventQueueConfig::default()));
+        let tool_pipeline = Arc::new(ToolPipeline::new(
+            Arc::new(TokioRwLock::new(ToolRegistry::new())),
+            Arc::new(ToolStateManager::new(event_queue.clone())),
+            None,
+        ));
+        let execution_engine = Arc::new(ExecutionEngine::new(
+            Arc::new(RoundExecutor::new(
+                Arc::new(StreamProcessor::new(event_queue.clone())),
+                event_queue.clone(),
+                tool_pipeline.clone(),
+            )),
+            event_queue.clone(),
+            session_manager.clone(),
+            Arc::new(ContextCompressor::new(CompressionConfig::default())),
+            ExecutionEngineConfig::default(),
+        ));
+        let coordinator = Arc::new(ConversationCoordinator::new(
+            session_manager.clone(),
+            execution_engine,
+            tool_pipeline,
+            event_queue,
+            Arc::new(EventRouter::new()),
+            Arc::new(
+                crate::runtime_ownership::CoreRuntimeOwnership::embedded_with_facts(
+                    std::env::temp_dir().join(format!(
+                        "bitfun-product-runtime-ownership-test-{}",
+                        uuid::Uuid::new_v4()
+                    )),
+                    "bitfun".to_string(),
+                    "test",
+                ),
+            ),
+        ));
+        let token_usage_service = Arc::new(
+            TokenUsageService::new_in_base_dir(workspace.path().join("tokens"))
+                .await
+                .expect("token usage service"),
+        );
+        let scheduler = DialogScheduler::new(coordinator.clone(), session_manager.clone());
+        let port =
+            CoreSessionOperationsPort::new(coordinator.clone(), scheduler, token_usage_service);
+
+        // Simulate the Workspace owner's verified attachment, as desktop open does.
+        coordinator
+            .ensure_verified_remote_workspace_runtime_ownership(
+                Path::new("/remote/project"),
+                "remote-branch-test",
+                Some("branch-test-host"),
+            )
+            .unwrap();
+        let source = crate::agentic::core::Session::new(
+            "Remote source".into(),
+            "agentic".into(),
+            bitfun_agent_runtime::session::SessionConfig {
+                workspace_path: Some("/remote/project".into()),
+                remote_connection_id: Some("remote-branch-test".into()),
+                remote_ssh_host: Some("branch-test-host".into()),
+                ..Default::default()
+            },
+        );
+        persistence
+            .save_session(&storage_path, &source)
+            .await
+            .unwrap();
+        let mut turn = DialogTurnData::new(
+            "edit-turn".into(),
+            0,
+            source.session_id.clone(),
+            UserMessageData {
+                id: "user".into(),
+                content: "original".into(),
+                timestamp: 1,
+                metadata: None,
+            },
+        );
+        turn.mark_completed();
+        persistence
+            .save_dialog_turn(&storage_path, &turn)
+            .await
+            .unwrap();
+        let request = bitfun_agent_runtime::sdk::AgentSessionForkBeforeTurnRequest {
+            operation_id: Some(Uuid::new_v4().to_string()),
+            workspace_path: "/remote/project".into(),
+            source_session_id: source.session_id.clone(),
+            source_turn_id: "edit-turn".into(),
+            remote_connection_id: source.config.remote_connection_id.clone(),
+            remote_ssh_host: source.config.remote_ssh_host.clone(),
+        };
+        let mut wrong = request.clone();
+        wrong.remote_connection_id = Some("other-connection".into());
+        assert!(port.fork_session_before_turn(wrong).await.is_err());
+        let first = port
+            .fork_session_before_turn(request.clone())
+            .await
+            .expect("remote fork");
+        let retry = port.fork_session_before_turn(request).await.expect("retry");
+        assert_eq!(first.session_id, retry.session_id);
+        let branch = persistence
+            .load_session(&storage_path, &first.session_id)
+            .await
+            .unwrap();
+        assert!(branch.config.workspace_not_rewound);
+        assert_eq!(
+            branch.config.remote_connection_id,
+            source.config.remote_connection_id
+        );
+        assert!(persistence
+            .load_session_turns(&storage_path, &first.session_id)
+            .await
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            persistence
+                .load_session_turns(&storage_path, &source.session_id)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[tokio::test]
     async fn session_fork_reconciles_pending_revert_and_rejects_hidden_explicit_turns() {
         let workspace = TestWorkspace::new();
         let workspace_root = workspace.path().join("project");
         std::fs::create_dir_all(&workspace_root).expect("workspace root");
         let path_manager = workspace.path_manager();
+        let _runtime_guard = set_workspace_runtime_service_for_current_test(Arc::new(
+            WorkspaceRuntimeService::new(path_manager.clone()),
+        ));
         let storage_path = WorkspaceRuntimeService::new(path_manager.clone())
             .context_for_local_workspace(&workspace_root)
             .sessions_dir;

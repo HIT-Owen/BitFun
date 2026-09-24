@@ -322,6 +322,7 @@ impl RuntimeIpcRequestHandler for SharedRuntimeHandler {
                     Some(source_turn_id) => {
                         self.runtime
                             .fork_session_before_turn(AgentSessionForkBeforeTurnRequest {
+                                operation_id: None,
                                 workspace_path: workspace_path.clone(),
                                 source_session_id: request.session_id,
                                 source_turn_id,

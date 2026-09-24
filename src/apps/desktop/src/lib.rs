@@ -1512,6 +1512,8 @@ pub async fn run() {
             touch_session_activity,
             load_persisted_session_metadata,
             fork_session,
+            get_remote_message_edit_capability,
+            fork_remote_session_before_turn,
             archive_session,
             unarchive_session,
             archive_all_sessions,

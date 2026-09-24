@@ -11,9 +11,9 @@ use std::time::Instant;
 use async_trait::async_trait;
 use bitfun_agent_runtime::sdk::{
     AgentLocalCommandTurnRecordRequest, AgentRuntime, AgentSessionArchiveStateRequest,
-    AgentSessionDeleteRequest, AgentSessionForkAtTurnRequest, AgentSessionLineageRequest,
-    AgentSessionLineageSnapshot, AgentSessionRenameRequest, AgentSessionUsageRequest,
-    PortErrorKind, RuntimeError,
+    AgentSessionDeleteRequest, AgentSessionForkAtTurnRequest, AgentSessionForkBeforeTurnRequest,
+    AgentSessionLineageRequest, AgentSessionLineageSnapshot, AgentSessionRenameRequest,
+    AgentSessionUsageRequest, PortErrorKind, RuntimeError,
 };
 use bitfun_core::agentic::coordination::{ConversationCoordinator, DialogScheduler};
 use bitfun_core::agentic::core::Session;
@@ -651,6 +651,43 @@ impl DesktopSessionApplication {
             })
             .await
             .map_err(|error| DesktopSessionApplicationError::Runtime(error.into_message()))?;
+        Ok(SessionBranchResult {
+            session_id: result.session_id,
+            session_name: result.session_name,
+            agent_type: result.agent_type,
+        })
+    }
+
+    pub(crate) async fn fork_remote_session_before_turn(
+        &self,
+        request: DesktopSessionScopeRequest,
+        source_session_id: String,
+        source_turn_id: String,
+        operation_id: String,
+    ) -> DesktopSessionApplicationResult<SessionBranchResult> {
+        let scope = self.resolved_scope(request).await;
+        if scope
+            .remote_connection_id
+            .as_deref()
+            .is_none_or(|id| id.trim().is_empty())
+        {
+            return Err(DesktopSessionApplicationError::Validation(
+                "Remote message editing requires an explicit remote connection".into(),
+            ));
+        }
+        self.ensure_runtime_ownership(&scope)?;
+        let result = self
+            .agent_runtime
+            .fork_session_before_turn(AgentSessionForkBeforeTurnRequest {
+                operation_id: Some(operation_id),
+                workspace_path: scope.workspace_path,
+                source_session_id,
+                source_turn_id,
+                remote_connection_id: scope.remote_connection_id,
+                remote_ssh_host: scope.resolved_remote_ssh_host,
+            })
+            .await
+            .map_err(|e| DesktopSessionApplicationError::Runtime(e.into_message()))?;
         Ok(SessionBranchResult {
             session_id: result.session_id,
             session_name: result.session_name,

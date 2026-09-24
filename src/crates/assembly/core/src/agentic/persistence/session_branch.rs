@@ -1,20 +1,65 @@
 use super::manager::PersistenceManager;
 use crate::agentic::core::{Session, SessionKind};
 use crate::util::errors::{BitFunError, BitFunResult};
+use bitfun_services_core::session::SessionBranchBoundary;
 use bitfun_services_core::session::{
     build_branched_session_metadata, format_branch_session_name, resolve_branch_session_lineage,
     BranchSessionMetadataFacts,
 };
-use bitfun_services_core::session::SessionBranchBoundary;
 pub use bitfun_services_core::session::{SessionBranchRequest, SessionBranchResult};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 impl PersistenceManager {
+    pub(crate) async fn existing_edit_branch(
+        &self,
+        workspace_path: &Path,
+        request: &SessionBranchRequest,
+        id: &str,
+    ) -> BitFunResult<Option<SessionBranchResult>> {
+        uuid::Uuid::parse_str(id)
+            .map_err(|_| BitFunError::Validation("Branch operation id must be a UUID".into()))?;
+        if let Some(metadata) = self.load_session_metadata(workspace_path, id).await? {
+            let marker = metadata
+                .custom_metadata
+                .as_ref()
+                .and_then(|m| m.get("remoteEditOrigin"));
+            let expected = serde_json::json!({"sessionId": request.source_session_id, "turnId": request.source_turn_id});
+            if marker != Some(&expected) {
+                return Err(BitFunError::Validation(
+                    "Branch operation id is already used by a different request".into(),
+                ));
+            }
+            return Ok(Some(SessionBranchResult {
+                session_id: id.into(),
+                session_name: metadata.session_name,
+                agent_type: metadata.agent_type,
+            }));
+        }
+        // Never overwrite a partially persisted branch after a process interruption.
+        if tokio::fs::try_exists(self.session_layout(workspace_path).session_dir(id)).await? {
+            return Err(BitFunError::Validation(
+                "Branch creation is incomplete; retain the branch and recover it before retrying"
+                    .into(),
+            ));
+        }
+        Ok(None)
+    }
+
     pub async fn branch_session(
         &self,
         workspace_path: &Path,
         request: &SessionBranchRequest,
+    ) -> BitFunResult<SessionBranchResult> {
+        self.branch_session_with_operation(workspace_path, request, None)
+            .await
+    }
+
+    pub(crate) async fn branch_session_with_operation(
+        &self,
+        workspace_path: &Path,
+        request: &SessionBranchRequest,
+        operation_id: Option<&str>,
     ) -> BitFunResult<SessionBranchResult> {
         bitfun_core_types::validate_session_id(&request.source_session_id)
             .map_err(BitFunError::Validation)?;
@@ -23,6 +68,14 @@ impl PersistenceManager {
             .await;
         let _branch_allocation_guard = branch_allocation_lock.lock().await;
 
+        if let Some(id) = operation_id {
+            if let Some(result) = self
+                .existing_edit_branch(workspace_path, request, id)
+                .await?
+            {
+                return Ok(result);
+            }
+        }
         let source_session = self
             .load_session(workspace_path, &request.source_session_id)
             .await?;
@@ -76,6 +129,14 @@ impl PersistenceManager {
             target_agent_type.clone(),
             source_session.config.clone(),
         );
+        if let Some(id) = operation_id {
+            target_session.session_id = id.to_string();
+        }
+        if request.boundary == SessionBranchBoundary::BeforeTurn
+            && (operation_id.is_some() || target_session.config.remote_connection_id.is_some())
+        {
+            target_session.config.workspace_not_rewound = true;
+        }
         target_session.created_by = None;
         target_session.kind = SessionKind::Standard;
         target_session.snapshot_session_id = None;
@@ -151,7 +212,7 @@ impl PersistenceManager {
                 .await?;
             }
 
-            if let Some(cache) = source_prompt_cache.as_ref() {
+            if let Some(cache) = source_prompt_cache.as_ref().filter(|_| !target_session.config.workspace_not_rewound) {
                 self.save_prompt_cache(workspace_path, &target_session_id, cache)
                     .await?;
             }
@@ -174,7 +235,7 @@ impl PersistenceManager {
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis() as u64;
-            let branched_metadata = build_branched_session_metadata(BranchSessionMetadataFacts {
+            let mut branched_metadata = build_branched_session_metadata(BranchSessionMetadataFacts {
                 source_metadata: &source_metadata,
                 target_session_id: target_session_id.clone(),
                 target_session_name: target_session_name.clone(),
@@ -188,6 +249,10 @@ impl PersistenceManager {
                 now_ms,
             });
 
+            if operation_id.is_some() {
+                let metadata = branched_metadata.custom_metadata.get_or_insert_with(|| serde_json::json!({}));
+                metadata.as_object_mut().ok_or_else(|| BitFunError::Validation("Branch metadata must be an object".into()))?.insert("remoteEditOrigin".into(), serde_json::json!({"sessionId": request.source_session_id, "turnId": request.source_turn_id}));
+            }
             self.save_session_metadata(workspace_path, &branched_metadata)
                 .await?;
 
@@ -301,6 +366,112 @@ mod tests {
             .save_session_metadata(workspace_path, &metadata)
             .await
             .expect("renamed metadata should save");
+    }
+
+    #[tokio::test]
+    async fn remote_edit_branch_is_retryable_and_keeps_only_prior_context() {
+        let workspace = TestWorkspace::new();
+        let manager = PersistenceManager::new(workspace.path_manager()).unwrap();
+        let mut source = Session::new("Remote".into(), "agentic".into(), Default::default());
+        source.config.workspace_path = Some("/work/project".into());
+        source.config.remote_connection_id = Some("connection-a".into());
+        source.config.remote_ssh_host = Some("host-a".into());
+        manager
+            .save_session(workspace.path(), &source)
+            .await
+            .unwrap();
+        for (index, id) in ["kept", "edited", "discarded"].into_iter().enumerate() {
+            manager
+                .save_dialog_turn(
+                    workspace.path(),
+                    &build_turn(&source.session_id, id, index, id),
+                )
+                .await
+                .unwrap();
+            manager
+                .save_turn_context_snapshot(
+                    workspace.path(),
+                    &source.session_id,
+                    index,
+                    &[Message::user(id.into())],
+                )
+                .await
+                .unwrap();
+        }
+        manager
+            .save_prompt_cache(
+                workspace.path(),
+                &source.session_id,
+                &SessionPromptCache {
+                    system_prompt: Some(CachedSystemPrompt::new(
+                        SystemPromptCacheIdentity::new("old"),
+                        "discarded environment",
+                    )),
+                    user_context: Some(CachedUserContext::new(
+                        UserContextCacheIdentity::new("old"),
+                        "discarded context",
+                    )),
+                },
+            )
+            .await
+            .unwrap();
+        let request = SessionBranchRequest {
+            source_session_id: source.session_id.clone(),
+            source_turn_id: "edited".into(),
+            boundary: SessionBranchBoundary::BeforeTurn,
+        };
+        let operation = uuid::Uuid::new_v4().to_string();
+        let result = manager
+            .branch_session_with_operation(workspace.path(), &request, Some(&operation))
+            .await
+            .unwrap();
+        let again = manager
+            .branch_session_with_operation(workspace.path(), &request, Some(&operation))
+            .await
+            .unwrap();
+        assert_eq!(result.session_id, again.session_id);
+        let branch = manager
+            .load_session(workspace.path(), &result.session_id)
+            .await
+            .unwrap();
+        assert!(branch.config.workspace_not_rewound);
+        assert_eq!(
+            branch.config.remote_connection_id,
+            source.config.remote_connection_id
+        );
+        assert_eq!(branch.config.workspace_path, source.config.workspace_path);
+        let turns = manager
+            .load_session_turns(workspace.path(), &result.session_id)
+            .await
+            .unwrap();
+        assert_eq!(turns.len(), 1);
+        assert_eq!(turns[0].turn_id, "kept");
+        assert!(manager
+            .load_turn_context_snapshot(workspace.path(), &result.session_id, 1)
+            .await
+            .unwrap()
+            .is_none());
+        assert!(manager
+            .load_prompt_cache(workspace.path(), &result.session_id)
+            .await
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            manager
+                .load_session_turns(workspace.path(), &source.session_id)
+                .await
+                .unwrap()
+                .len(),
+            3
+        );
+        let different = SessionBranchRequest {
+            source_turn_id: "discarded".into(),
+            ..request
+        };
+        assert!(manager
+            .branch_session_with_operation(workspace.path(), &different, Some(&operation))
+            .await
+            .is_err());
     }
 
     #[tokio::test]

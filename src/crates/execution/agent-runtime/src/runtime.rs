@@ -2331,6 +2331,7 @@ mod tests {
             .build()
             .expect("runtime");
         let request = AgentSessionForkBeforeTurnRequest {
+            operation_id: None,
             workspace_path: "/workspace/project".to_string(),
             source_session_id: "session-1".to_string(),
             source_turn_id: "turn-2".to_string(),

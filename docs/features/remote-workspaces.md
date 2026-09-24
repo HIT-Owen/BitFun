@@ -113,3 +113,29 @@ upgrade but require manual credential entry before reconnecting.
 
 For the ownership and transport contracts behind these behaviors, see
 [`remote-workspace-transport.md`](../architecture/remote-workspace-transport.md).
+
+## Editing an earlier message
+
+On a desktop execution host that advertises remote message editing, **Edit and
+run in a new branch** creates a conversation branch immediately before the
+selected message and submits the edited input there. The original conversation
+is retained. Files, command outputs, and external effects are not rolled back;
+background processes started by commands may still exist. The confirmation
+explains this, and the runtime includes a persistent workspace-continuity notice
+in the model prompt, including after session restore or context compression.
+
+Branch creation settles the source Agent and its managed subagents using the
+existing scheduler maintenance boundary. Clear pending input before editing.
+The new branch preserves the remote workspace identity, excludes the selected
+and later turns, and regenerates the environment prompt cache. An operation UUID
+and a stable submission turn ID make uncertain retries reuse the same branch and
+submission. A partially persisted branch is retained and reported explicitly,
+not overwritten. Remote file-and-message rollback remains unavailable.
+
+The UI probes the execution host before mutating history. Older hosts and CLI
+peer hosts without this desktop command return an unsupported state. External ACP sessions are explicitly unsupported because their runtime does not
+consume BitFun workspace-continuity prompts. Mobile/IM
+and detached-dispatch surfaces do not expose this operation; detached sessions
+remain gated. A desktop peer may serve the operation through its existing invoke
+bridge when its capability probe succeeds; workspace identity is resolved on
+that peer, never on the controller.

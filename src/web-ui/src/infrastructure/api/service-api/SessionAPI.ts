@@ -258,17 +258,27 @@ export class SessionAPI {
     }
   }
 
+  async supportsRemoteMessageEdit(): Promise<boolean> {
+    try {
+      return await api.invoke<boolean>('get_remote_message_edit_capability') === true;
+    } catch (error) {
+      throw createTauriCommandError('get_remote_message_edit_capability', error);
+    }
+  }
+
   async forkSession(
     sourceSessionId: string,
     sourceTurnId: string,
     workspacePath: string,
     remoteConnectionId?: string,
-    remoteSshHost?: string
+    remoteSshHost?: string,
+    operationId?: string
   ): Promise<{ sessionId: string; sessionName: string; agentType: string }> {
     try {
       const normalizedRemoteFields = remoteSessionFields(remoteConnectionId, remoteSshHost);
-      return await api.invoke('fork_session', {
+      return await api.invoke(operationId ? 'fork_remote_session_before_turn' : 'fork_session', {
         request: {
+          ...(operationId ? { operation_id: operationId } : {}),
           source_session_id: sourceSessionId,
           source_turn_id: sourceTurnId,
           workspace_path: workspacePath,

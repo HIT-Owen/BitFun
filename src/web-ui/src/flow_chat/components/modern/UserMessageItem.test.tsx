@@ -409,7 +409,7 @@ describe('UserMessageItem steering tag', () => {
     expect(container.querySelector('.user-message-item__rollback-btn')).not.toBeNull();
   });
 
-  it('disables file-consistent rollback and message editing for remote workspaces', () => {
+  it('keeps remote file rollback disabled while offering edit in a new branch', () => {
     activeSessionRef.current = {
       sessionId: 'remote-session',
       sessionKind: 'normal',
@@ -452,8 +452,8 @@ describe('UserMessageItem steering tag', () => {
 
     expect(rollbackButton?.disabled).toBe(true);
     expect(rollbackButton?.title).toContain('message.rollbackDisabledRemote');
-    expect(editButton?.disabled).toBe(true);
-    expect(editButton?.title).toContain('message.editDisabledRemote');
+    expect(editButton?.disabled).toBe(false);
+    expect(editButton?.title).toContain('message.remoteEditAction');
   });
 
   it('hides the edit button when the panel context disables user message editing', () => {

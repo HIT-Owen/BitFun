@@ -896,7 +896,8 @@ export async function reloadSessionTitle(
 export async function forkChatSession(
   context: FlowChatContext,
   sourceSessionId: string,
-  sourceTurnId: string
+  sourceTurnId: string,
+  operationId?: string
 ): Promise<string> {
   const sourceSession = context.flowChatStore.getState().sessions.get(sourceSessionId);
   if (!sourceSession) {
@@ -915,12 +916,15 @@ export async function forkChatSession(
     sourceSessionId,
   );
 
+  const remoteConnectionId = sourceSession.remoteConnectionId ?? sourceSession.config.remoteConnectionId;
+  const remoteSshHost = sourceSession.remoteSshHost ?? sourceSession.config.remoteSshHost;
   const response = await sessionAPI.forkSession(
     sourceSessionId,
     sourceTurnId,
     projectWorkspacePath,
-    sourceSession.remoteConnectionId,
-    sourceSession.remoteSshHost
+    remoteConnectionId,
+    remoteSshHost,
+    operationId
   );
 
   const currentState = context.flowChatStore.getState();
@@ -932,16 +936,16 @@ export async function forkChatSession(
         workspacePath: executionWorkspacePath,
         projectWorkspacePath,
         workspaceId: sourceSession.workspaceId,
-        remoteConnectionId: sourceSession.remoteConnectionId,
-        remoteSshHost: sourceSession.remoteSshHost,
+        remoteConnectionId: remoteConnectionId,
+        remoteSshHost: remoteSshHost,
       },
       undefined,
       response.sessionName,
       sourceSession.maxContextTokens,
       sourceSession.mode,
       executionWorkspacePath,
-      sourceSession.remoteConnectionId,
-      sourceSession.remoteSshHost,
+      remoteConnectionId,
+      remoteSshHost,
       createTextSessionTitleDescriptor(response.sessionName),
     );
   } else {
@@ -952,8 +956,8 @@ export async function forkChatSession(
     response.sessionId,
     projectWorkspacePath,
     undefined,
-    sourceSession.remoteConnectionId,
-    sourceSession.remoteSshHost,
+    remoteConnectionId,
+    remoteSshHost,
     { deferFullHistoryUntilActive: true },
   );
   context.flowChatStore.switchSession(response.sessionId);

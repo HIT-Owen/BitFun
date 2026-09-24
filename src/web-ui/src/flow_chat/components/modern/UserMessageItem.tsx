@@ -166,14 +166,13 @@ export const UserMessageItem = React.memo<UserMessageItemProps>(
       allowUserMessageEdit &&
       !!resolvedSessionId &&
       actionTurnIndex >= 0 &&
-      !isRemoteSession &&
       !isThreadGoalSystemMessage &&
       !isSystemTriggered &&
       !steeringStatus;
     const canEdit = canEditBase && !isEditSubmitting && !isRollingBack;
     const canShowEditAction = allowUserMessageEdit && !isFailed && !isThreadGoalSystemMessage;
     const editDisabledReason = isRemoteSession
-      ? t('message.editDisabledRemote')
+      ? t('message.remoteEditAction')
       : isSystemTriggered
         ? t('message.cannotEdit')
         : steeringStatus
@@ -344,12 +343,13 @@ export const UserMessageItem = React.memo<UserMessageItemProps>(
 
       const impact = describeUserMessageEditImpact(resolvedSessionId);
       const confirmed = await confirmDanger(
-        t('message.editDialogTitle', { index: actionTurnIndex + 1 }),
+        isRemoteSession ? t('message.remoteEditAction') : t('message.editDialogTitle', { index: actionTurnIndex + 1 }),
         (
           <>
-            <p className="confirm-dialog__message-intro">{t('message.editDialogIntro')}</p>
+            <p className="confirm-dialog__message-intro">{isRemoteSession ? t('message.remoteEditIntro') : t('message.editDialogIntro')}</p>
             <ul className="confirm-dialog__bullet-list">
               {impact.willStopRunningTask && <li>{t('message.editDialogBulletStopRunning')}</li>}
+              {impact.willBranch && <li>{t('message.remoteEditNotice')}</li>}
               {impact.willRestoreFiles && <li>{t('message.editDialogBulletFiles')}</li>}
               {impact.willDeleteTurns && <li>{t('message.editDialogBulletHistory')}</li>}
               {impact.willRerun && <li>{t('message.editDialogBulletRerun')}</li>}
@@ -381,29 +381,31 @@ export const UserMessageItem = React.memo<UserMessageItemProps>(
           originalContent: messageContent,
           editedContent,
           agentType: currentSession?.mode,
-          rerun: (content, agentType) => {
+          rerun: (content, agentType, targetSessionId = resolvedSessionId, rerunTurnId) => {
             if (!editedPresentation) {
               return flowChatManager.sendMessage(
                 content,
-                resolvedSessionId,
+                targetSessionId,
                 undefined,
                 agentType,
+                undefined,
+                { turnId: rerunTurnId, preserveTurnOnStartError: Boolean(rerunTurnId) },
               );
             }
 
             const payload = buildPresentationRerunPayload(editedPresentation);
             return flowChatManager.sendMessage(
               payload.message,
-              resolvedSessionId,
+              targetSessionId,
               payload.displayMessage,
               agentType,
               undefined,
-              { userMessageMetadata: payload.userMessageMetadata },
+              { userMessageMetadata: payload.userMessageMetadata, turnId: rerunTurnId, preserveTurnOnStartError: Boolean(rerunTurnId) },
             );
           },
         });
         cancelEdit();
-        notificationService.success(t('message.editSuccess'));
+        notificationService.success(isRemoteSession ? t('message.remoteEditSuccess') : t('message.editSuccess'));
       } catch (error) {
         log.error('Message edit failed', { sessionId: resolvedSessionId, turnId, error });
         notificationService.error(`${t('message.editFailed')}: ${error instanceof Error ? error.message : String(error)}`);
@@ -415,6 +417,7 @@ export const UserMessageItem = React.memo<UserMessageItemProps>(
       actionTurnIndex,
       composerPresentation,
       currentSession?.mode,
+      isRemoteSession,
       editDraft,
       isEditSubmitting,
       messageContent,
@@ -615,13 +618,13 @@ export const UserMessageItem = React.memo<UserMessageItemProps>(
                 {copied ? <Check size={14} /> : <Copy size={14} />}
               </button>
               {canShowEditAction && (
-                <Tooltip content={canEdit ? t('message.edit') : editDisabledReason}>
+                <Tooltip content={canEdit ? (isRemoteSession ? t('message.remoteEditAction') : t('message.edit')) : editDisabledReason}>
                   <button
                     type="button"
                     className="user-message-item__edit-btn"
                     onClick={handleBeginEdit}
                     disabled={!canEdit}
-                    title={canEdit ? t('message.edit') : editDisabledReason}
+                    title={canEdit ? (isRemoteSession ? t('message.remoteEditAction') : t('message.edit')) : editDisabledReason}
                   >
                     <Pencil size={14} />
                   </button>

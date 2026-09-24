@@ -1376,13 +1376,21 @@ impl ExecutionEngine {
                 prompt_context.as_ref(),
             )
             .await;
-        let system_prompt = self
+        let mut system_prompt = self
             .resolve_cached_system_prompt(
                 &input.context.session_id,
                 input.current_agent,
                 prompt_context.as_ref(),
             )
             .await?;
+
+        if self
+            .session_manager
+            .get_session(&input.context.session_id)
+            .is_some_and(|s| s.config.workspace_not_rewound)
+        {
+            system_prompt.push_str("\n\nWorkspace continuity: This conversation was branched before a historical message. Later conversation turns were excluded, but workspace files and external effects were NOT rolled back. Files and outputs may include changes from the original attempt; background processes may still be running. Treat the current workspace as authoritative. Recheck relevant files and processes before relying on historical reads, repeating commands, overwriting outputs, or starting jobs. Do not assume a clean starting state or undo existing changes without user authorization.");
+        }
 
         Self::log_turn_prompt_scaffold(
             &input.context.session_id,
@@ -2451,7 +2459,9 @@ impl ExecutionEngine {
 
         // Prefer a user-configured context compression model when available;
         // otherwise the session's turn model (the `ai_client` argument) is used.
-        let ai_client = self.resolve_compression_ai_client(&session, ai_client).await;
+        let ai_client = self
+            .resolve_compression_ai_client(&session, ai_client)
+            .await;
 
         // Record start time
         let start_time = std::time::Instant::now();

@@ -152,6 +152,9 @@ impl From<Session> for bitfun_runtime_ports::AgentSessionCreateResult {
 /// Session configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionConfig {
+    /// Conversation branched without restoring workspace files or external effects.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub workspace_not_rewound: bool,
     pub max_context_tokens: usize,
     pub auto_compact: bool,
     pub enable_tools: bool,
@@ -218,6 +221,10 @@ pub struct SessionConfig {
     pub agent_route_owner: SessionAgentRouteOwner,
 }
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 fn is_reusable_continuation_policy(policy: &SessionContinuationPolicy) -> bool {
     *policy == SessionContinuationPolicy::Reusable
 }
@@ -233,6 +240,7 @@ fn is_local_agent_route_owner(owner: &SessionAgentRouteOwner) -> bool {
 impl Default for SessionConfig {
     fn default() -> Self {
         Self {
+            workspace_not_rewound: false,
             max_context_tokens: 128128,
             auto_compact: true,
             enable_tools: true,
@@ -345,6 +353,21 @@ mod tests {
             "compression_state": { "last_compression_at": null, "compression_count": 0 },
             "runtime_state": "Idle",
         })
+    }
+
+    #[test]
+    fn workspace_continuity_flag_reads_legacy_and_survives_round_trip() {
+        let mut legacy = serde_json::to_value(SessionConfig::default()).unwrap();
+        legacy
+            .as_object_mut()
+            .unwrap()
+            .remove("workspace_not_rewound");
+        let mut config: SessionConfig = serde_json::from_value(legacy).unwrap();
+        assert!(!config.workspace_not_rewound);
+        config.workspace_not_rewound = true;
+        let restored: SessionConfig =
+            serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
+        assert!(restored.workspace_not_rewound);
     }
 
     #[test]

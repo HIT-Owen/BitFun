@@ -962,6 +962,7 @@ impl ExecAgentRuntimeClient {
                     Some(source_turn_id) => {
                         runtime
                             .fork_session_before_turn(AgentSessionForkBeforeTurnRequest {
+                                operation_id: None,
                                 workspace_path: workspace_path.clone(),
                                 source_session_id,
                                 source_turn_id: source_turn_id.to_string(),

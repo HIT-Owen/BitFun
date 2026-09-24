@@ -1418,6 +1418,9 @@ pub struct AgentSessionForkAtTurnRequest {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct AgentSessionForkBeforeTurnRequest {
+    /// Client-generated UUID identifying one retryable branch creation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation_id: Option<String>,
     pub workspace_path: String,
     pub source_session_id: String,
     pub source_turn_id: String,
@@ -3232,12 +3235,22 @@ mod tests {
         assert_eq!(error.kind, PortErrorKind::NotAvailable);
     }
 
+    #[test]
+    fn before_turn_fork_reads_legacy_request_without_operation_id() {
+        let legacy = serde_json::json!({"workspacePath": "/work", "sourceSessionId": "source", "sourceTurnId": "turn"});
+        let request: AgentSessionForkBeforeTurnRequest =
+            serde_json::from_value(legacy.clone()).unwrap();
+        assert!(request.operation_id.is_none());
+        assert_eq!(serde_json::to_value(request).unwrap(), legacy);
+    }
+
     #[tokio::test]
     async fn before_turn_fork_default_preserves_existing_provider_compatibility() {
         let provider = LatestTurnForkOnlyProvider;
         let error = AgentSessionForkPort::fork_session_before_turn(
             &provider,
             AgentSessionForkBeforeTurnRequest {
+                operation_id: None,
                 workspace_path: "/workspace/project".to_string(),
                 source_session_id: "session_1".to_string(),
                 source_turn_id: "turn_1".to_string(),
@@ -4240,6 +4253,7 @@ mod tests {
             remote_ssh_host: Some("host-1".to_string()),
         };
         let fork_before_turn_request = AgentSessionForkBeforeTurnRequest {
+            operation_id: None,
             workspace_path: "/workspace/project".to_string(),
             source_session_id: "session_1".to_string(),
             source_turn_id: "turn_2".to_string(),

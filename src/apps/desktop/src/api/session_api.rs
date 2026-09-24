@@ -225,6 +225,46 @@ pub struct ForkSessionRequest {
 
 pub type ForkSessionResponse = SessionBranchResult;
 
+#[derive(Debug, Deserialize)]
+pub struct ForkRemoteSessionBeforeTurnRequest {
+    #[serde(flatten)]
+    pub source: ForkSessionRequest,
+    pub operation_id: String,
+}
+
+/// Read-only capability probe; older hosts cannot accidentally run an inclusive fork.
+#[tauri::command]
+pub async fn get_remote_message_edit_capability() -> bool {
+    true
+}
+
+#[tauri::command]
+pub async fn fork_remote_session_before_turn(
+    request: ForkRemoteSessionBeforeTurnRequest,
+    runtime: State<'_, DesktopRuntimeContext>,
+) -> Result<ForkSessionResponse, String> {
+    let source = request.source;
+    runtime
+        .session_application()
+        .fork_remote_session_before_turn(
+            desktop_session_scope(
+                source.workspace_path,
+                source.remote_connection_id,
+                source.remote_ssh_host,
+            ),
+            source.source_session_id,
+            source.source_turn_id,
+            request.operation_id,
+        )
+        .await
+        .map_err(|e| {
+            format!(
+                "Failed to branch remote session: {}",
+                desktop_session_error(e)
+            )
+        })
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArchiveSessionRequest {
     pub session_id: String,

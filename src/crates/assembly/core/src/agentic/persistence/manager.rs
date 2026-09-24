@@ -695,7 +695,7 @@ impl PersistenceManager {
         self.session_layout(workspace_path).index_path()
     }
 
-    fn session_layout(&self, workspace_path: &Path) -> SessionStorageLayout {
+    pub(super) fn session_layout(&self, workspace_path: &Path) -> SessionStorageLayout {
         SessionStorageLayout::new(self.project_sessions_dir(workspace_path))
     }
 

@@ -636,8 +636,8 @@ export class FlowChatManager {
     await reloadSessionTitleModule(this.context, sessionId);
   }
 
-  async forkChatSession(sourceSessionId: string, sourceTurnId: string): Promise<string> {
-    return forkChatSessionModule(this.context, sourceSessionId, sourceTurnId);
+  async forkChatSession(sourceSessionId: string, sourceTurnId: string, operationId?: string): Promise<string> {
+    return forkChatSessionModule(this.context, sourceSessionId, sourceTurnId, operationId);
   }
 
   async resetWorkspaceSessions(

@@ -488,6 +488,14 @@ pub const REMOTE_WORKSPACE_COMMAND_POLICIES: &[(&str, RemoteWorkspacePolicy)] = 
     ),
     ("fork_session", RemoteWorkspacePolicy::LegacyUnaudited),
     (
+        "get_remote_message_edit_capability",
+        RemoteWorkspacePolicy::WorkspaceAgnostic,
+    ),
+    (
+        "fork_remote_session_before_turn",
+        RemoteWorkspacePolicy::RemoteRouted,
+    ),
+    (
         "generate_commit_message",
         RemoteWorkspacePolicy::LegacyUnaudited,
     ),
