@@ -366,14 +366,16 @@ const UsageStatsScene: React.FC = () => {
   );
 };
 
-const SummaryCard: React.FC<{ label: string; value: string; accent?: boolean }> = ({ label, value, accent }) => (
-  <div className="usage-stats-card">
-    <div className="usage-stats-card__label">{label}</div>
-    <div className={`usage-stats-card__value${accent ? ' usage-stats-card__value--accent' : ''}`}>{value}</div>
-  </div>
-);
+function SummaryCard({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div className="usage-stats-card">
+      <div className="usage-stats-card__label">{label}</div>
+      <div className={`usage-stats-card__value${accent ? ' usage-stats-card__value--accent' : ''}`}>{value}</div>
+    </div>
+  );
+}
 
-const ModelHitRateCard: React.FC<{ models: ModelAgg[] }> = ({ models }) => {
+function ModelHitRateCard({ models }: { models: ModelAgg[] }) {
   const { t, formatNumber } = useI18n('common');
   const rows = models
     .map((m) => ({ m, rate: m.cacheReportedInput > 0 ? m.cached / m.cacheReportedInput : null }))
@@ -411,7 +413,7 @@ const ModelHitRateCard: React.FC<{ models: ModelAgg[] }> = ({ models }) => {
       )}
     </div>
   );
-};
+}
 
 interface DistributionSegment {
   label: string;
@@ -421,13 +423,19 @@ interface DistributionSegment {
   requests: number;
 }
 
-const DistributionCard: React.FC<{
+function DistributionCard({
+  title,
+  centerValue,
+  centerLabel,
+  segments,
+  columnLabel,
+}: {
   title: string;
   centerValue: string;
   centerLabel: string;
   segments: DistributionSegment[];
   columnLabel: string;
-}> = ({ title, centerValue, centerLabel, segments, columnLabel }) => {
+}) {
   const { t, formatNumber } = useI18n('common');
 
   return (
@@ -465,9 +473,9 @@ const DistributionCard: React.FC<{
       )}
     </div>
   );
-};
+}
 
-const DonutChart: React.FC<{ segments: { value: number; color: string }[] }> = ({ segments }) => {
+function DonutChart({ segments }: { segments: { value: number; color: string }[] }) {
   const size = 120;
   const strokeWidth = 15;
   const r = (size - strokeWidth) / 2;
@@ -506,7 +514,7 @@ const DonutChart: React.FC<{ segments: { value: number; color: string }[] }> = (
       })}
     </svg>
   );
-};
+}
 
 const MARKER_LIMIT = 31;
 
@@ -529,7 +537,7 @@ const trianglePoints = (cx: number, cy: number, size: number): string =>
     `${(cx + size * 0.87).toFixed(2)},${(cy + size * 0.5).toFixed(2)}`,
   ].join(' ');
 
-const TrendChart: React.FC<{ days: ModelUsageStatsResponse['days'] }> = ({ days }) => {
+function TrendChart({ days }: { days: ModelUsageStatsResponse['days'] }) {
   const { t, formatNumber } = useI18n('common');
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
@@ -754,6 +762,6 @@ const TrendChart: React.FC<{ days: ModelUsageStatsResponse['days'] }> = ({ days 
       </div>
     </div>
   );
-};
+}
 
 export default UsageStatsScene;
