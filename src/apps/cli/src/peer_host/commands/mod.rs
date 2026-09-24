@@ -81,6 +81,7 @@ pub(crate) async fn dispatch(
         "delete_session" => session::delete_session(state, args).await,
         "rename_session" => session::rename_session(state, args).await,
         "archive_session" => session::archive_session(state, args).await,
+        "set_session_pinned" => session::set_session_pinned(state, args).await,
         "touch_session_activity" => session::touch_session_activity(state, args).await,
         "get_session_thread_goal" => session::get_session_thread_goal(state, args).await,
         "update_session_mode" => session::update_session_mode(state, args).await,

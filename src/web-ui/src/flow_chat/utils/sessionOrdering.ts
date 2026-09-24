@@ -128,13 +128,33 @@ export function compareSessionMetadataForDisplay(
 }
 
 /**
- * Left-nav session list order: newest-created first, stable while switching sessions
- * (does not use `lastActiveAt`, so rows do not jump to the top on click).
+ * Left-nav session list order: pinned sessions ride above the rest with the
+ * most recent pin first, then newest-created first. The order stays stable
+ * while switching sessions (does not use `lastActiveAt`, so rows do not jump
+ * to the top on click). The backend page builder must apply the same pin
+ * ordering so a pinned session always lands inside the first loaded page.
  */
 export function compareSessionsForNavStable(
-  a: Pick<Session, 'sessionId' | 'createdAt'>,
-  b: Pick<Session, 'sessionId' | 'createdAt'>
+  a: Pick<Session, 'sessionId' | 'createdAt' | 'pinnedAt'>,
+  b: Pick<Session, 'sessionId' | 'createdAt' | 'pinnedAt'>
 ): number {
+  const aPinnedAt = typeof a.pinnedAt === 'number' && Number.isFinite(a.pinnedAt)
+    ? a.pinnedAt
+    : undefined;
+  const bPinnedAt = typeof b.pinnedAt === 'number' && Number.isFinite(b.pinnedAt)
+    ? b.pinnedAt
+    : undefined;
+  if (aPinnedAt !== undefined || bPinnedAt !== undefined) {
+    if (aPinnedAt !== undefined && bPinnedAt !== undefined) {
+      const pinnedAtDiff = bPinnedAt - aPinnedAt;
+      if (pinnedAtDiff !== 0) {
+        return pinnedAtDiff;
+      }
+    } else {
+      return aPinnedAt !== undefined ? -1 : 1;
+    }
+  }
+
   const createdAtDiff = b.createdAt - a.createdAt;
   if (createdAtDiff !== 0) {
     return createdAtDiff;

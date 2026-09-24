@@ -286,6 +286,17 @@ pub struct UnarchiveSessionRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetSessionPinnedRequest {
+    pub session_id: String,
+    pub workspace_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_connection_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_ssh_host: Option<String>,
+    pub pinned: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArchiveAllSessionsRequest {
     pub workspace_path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -779,6 +790,31 @@ pub async fn unarchive_session(
         .map_err(|error| {
             format!(
                 "Failed to save session metadata: {}",
+                desktop_session_error(error)
+            )
+        })
+}
+
+#[tauri::command]
+pub async fn set_session_pinned(
+    request: SetSessionPinnedRequest,
+    runtime: State<'_, DesktopRuntimeContext>,
+) -> Result<(), String> {
+    runtime
+        .session_application()
+        .set_session_pinned(
+            desktop_session_scope(
+                request.workspace_path,
+                request.remote_connection_id,
+                request.remote_ssh_host,
+            ),
+            request.session_id,
+            request.pinned,
+        )
+        .await
+        .map_err(|error| {
+            format!(
+                "Failed to update session pin state: {}",
                 desktop_session_error(error)
             )
         })

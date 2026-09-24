@@ -46,6 +46,11 @@ export interface SessionCustomMetadata extends Record<string, unknown> {
   titleSource?: SessionTitleSource | null;
   titleKey?: string | null;
   titleParams?: Record<string, unknown> | null;
+  /**
+   * UI pin state: presence pins the session above others in nav lists; the
+   * value (ms epoch) orders pinned sessions, most recent pin first.
+   */
+  pinnedAt?: number | null;
 }
 
 export type SessionContextUsageSource = 'model_request' | 'context_compression';

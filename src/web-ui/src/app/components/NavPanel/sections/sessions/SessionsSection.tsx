@@ -7,7 +7,7 @@
 
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Pencil, Trash2, Check, X, Bot, Code2, ClipboardList, Panda, MoreHorizontal, Loader2, Archive, Clock3, Copy, CircleHelp, FileDown, ChevronLeft } from 'lucide-react';
+import { Pencil, Trash2, Check, X, Bot, Code2, ClipboardList, Panda, MoreHorizontal, Loader2, Archive, Clock3, Copy, CircleHelp, FileDown, ChevronLeft, Pin, PinOff } from 'lucide-react';
 import { IconButton, Input, Tooltip } from '@/component-library';
 import { useI18n } from '@/infrastructure/i18n';
 import { flowChatStore } from '../../../../../flow_chat/store/FlowChatStore';
@@ -295,7 +295,8 @@ const SessionsSection: React.FC<SessionsSectionProps> = ({
           `${session.parentSessionId ?? ''}|${session.parentToolCallId ?? ''}|${session.subagentType ?? ''}|` +
           `${session.workspacePath ?? ''}|${session.mode ?? ''}|${session.needsUserAttention ? '1':'0'}|` +
           `${session.hasUnreadCompletion ? '1':'0'}|${latestTurn?.status ?? ''}|${hasAskUser ? '1':'0'}|${trackedTurn?.id ?? ''}|` +
-          `${session.title ?? ''}|${dispatchTargetSnapshot}|${session.config.dispatchJobState ?? ''}`
+          `${session.title ?? ''}|${dispatchTargetSnapshot}|${session.config.dispatchJobState ?? ''}|` +
+          `${session.pinnedAt ?? ''}`
         );
       }
       return parts.join(';');
@@ -1058,6 +1059,26 @@ const SessionsSection: React.FC<SessionsSectionProps> = ({
     [t]
   );
 
+  const handleTogglePin = useCallback(
+    async (e: React.MouseEvent, session: Session) => {
+      e.stopPropagation();
+      closeSessionMenu();
+      const pinned = !(
+        typeof session.pinnedAt === 'number' && Number.isFinite(session.pinnedAt)
+      );
+      try {
+        await flowChatManager.pinChatSession(session.sessionId, pinned);
+      } catch (err) {
+        log.error('Failed to update session pin state', err);
+        notificationService.error(
+          pinned ? t('nav.sessions.pinFailed') : t('nav.sessions.unpinFailed'),
+          { duration: 3000 }
+        );
+      }
+    },
+    [closeSessionMenu, t]
+  );
+
   const handleStartEdit = useCallback(
     (e: React.MouseEvent, session: Session) => {
       e.stopPropagation();
@@ -1235,6 +1256,8 @@ const SessionsSection: React.FC<SessionsSectionProps> = ({
                 : null;
           const sessionModeKey = resolveSessionModeType(session);
           const sessionTitle = resolveSessionTitle(session);
+          const isPinned =
+            typeof session.pinnedAt === 'number' && Number.isFinite(session.pinnedAt);
           const isRunning = runningSessionIds.has(session.sessionId);
           const isWaitingForUserAnswer = isRunning && hasPendingAskUserQuestion(
             resolveTrackedTurn(session),
@@ -1492,6 +1515,13 @@ const SessionsSection: React.FC<SessionsSectionProps> = ({
               ) : (
                 <>
                   <span className="bitfun-nav-panel__inline-item-main" data-bf-component="sessions-section" data-bf-part="rowMain">
+                    {isPinned ? (
+                      <Pin
+                        size={10}
+                        className="bitfun-nav-panel__inline-item-pin"
+                        aria-label={t('nav.sessions.pinned')}
+                      />
+                    ) : null}
                     <span className="bitfun-nav-panel__inline-item-label">{sessionTitle}</span>
                     {isChildSession ? (
                       <span className="bitfun-nav-panel__inline-item-btw-badge">{childSessionBadge}</span>
@@ -1610,6 +1640,16 @@ const SessionsSection: React.FC<SessionsSectionProps> = ({
                         </>
                       ) : (
                         <>
+                          <button
+                            type="button"
+                            className="bitfun-nav-panel__inline-item-menu-item"
+                            onClick={e => { void handleTogglePin(e, session); }}
+                            data-testid="nav-session-menu-pin"
+                            data-session-id={session.sessionId}
+                          >
+                            {isPinned ? <PinOff size={13} /> : <Pin size={13} />}
+                            <span>{isPinned ? t('nav.sessions.unpin') : t('nav.sessions.pin')}</span>
+                          </button>
                           <button
                             type="button"
                             className="bitfun-nav-panel__inline-item-menu-item"

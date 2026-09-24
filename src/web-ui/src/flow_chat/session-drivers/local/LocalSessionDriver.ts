@@ -201,6 +201,25 @@ export const localSessionDriver: SessionDriver = {
     return updatedTitle;
   },
 
+  async pinSession(
+    context: FlowChatContext,
+    sessionId: string,
+    pinned: boolean,
+  ): Promise<void> {
+    const session = context.flowChatStore.getState().sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Session does not exist: ${sessionId}`);
+    }
+    await sessionAPI.setSessionPinned(
+      sessionId,
+      requireSessionProjectWorkspacePath(session, sessionId),
+      pinned,
+      session.remoteConnectionId,
+      session.remoteSshHost,
+    );
+    context.flowChatStore.updateSessionPinnedAt(sessionId, pinned ? Date.now() : undefined);
+  },
+
   async ensureReady(context: FlowChatContext, sessionId: string): Promise<void> {
     // Deliberate lazy import: SessionModule routes lifecycle calls through the
     // driver registry, so a static import here would create a module cycle.

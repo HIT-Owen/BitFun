@@ -26,10 +26,10 @@ pub use memory_workspace::{
 pub use metadata::{
     build_session_index_snapshot, build_session_metadata, estimate_turn_message_count,
     merge_session_custom_metadata, normalized_session_relationship,
-    refresh_session_metadata_from_turns, remove_session_index_entry, set_deep_review_cache,
-    set_deep_review_run_manifest, set_review_target_evidence, set_session_relationship,
-    try_refresh_session_metadata_for_saved_turn, upsert_session_index_entry,
-    SessionMetadataBuildFacts,
+    refresh_session_metadata_from_turns, remove_session_index_entry, session_pin_at,
+    set_deep_review_cache, set_deep_review_run_manifest, set_review_target_evidence,
+    set_session_pin_state, set_session_relationship, try_refresh_session_metadata_for_saved_turn,
+    upsert_session_index_entry, SessionMetadataBuildFacts, SESSION_PIN_METADATA_KEY,
 };
 pub use metadata_store::{SessionMetadataStore, SessionMetadataStoreError};
 pub use migration::{

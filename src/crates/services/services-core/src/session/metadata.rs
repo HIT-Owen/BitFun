@@ -376,6 +376,55 @@ pub fn merge_session_custom_metadata(metadata: &mut SessionMetadata, patch: Valu
     });
 }
 
+/// `customMetadata.pinnedAt` — UI pin state: presence pins the session above
+/// others in nav lists; the value orders pinned sessions, most recent pin first.
+pub const SESSION_PIN_METADATA_KEY: &str = "pinnedAt";
+
+pub fn session_pin_at(metadata: &SessionMetadata) -> Option<u64> {
+    let value = metadata
+        .custom_metadata
+        .as_ref()?
+        .get(SESSION_PIN_METADATA_KEY)?;
+    if let Some(ms) = value.as_u64() {
+        return Some(ms);
+    }
+    value
+        .as_f64()
+        .filter(|ms| ms.is_finite() && *ms >= 0.0)
+        .map(|ms| ms as u64)
+}
+
+pub fn set_session_pin_state(metadata: &mut SessionMetadata, pinned: bool) {
+    let pin_at = pinned.then(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64
+    });
+
+    if let Some(custom) = metadata
+        .custom_metadata
+        .as_mut()
+        .and_then(|value| value.as_object_mut())
+    {
+        if let Some(pin_at) = pin_at {
+            custom.insert(SESSION_PIN_METADATA_KEY.to_string(), Value::from(pin_at));
+        } else {
+            custom.remove(SESSION_PIN_METADATA_KEY);
+        }
+        if custom.is_empty() {
+            metadata.custom_metadata = None;
+        }
+        return;
+    }
+
+    if let Some(pin_at) = pin_at {
+        let mut custom = serde_json::Map::new();
+        custom.insert(SESSION_PIN_METADATA_KEY.to_string(), Value::from(pin_at));
+        metadata.custom_metadata = Some(Value::Object(custom));
+    }
+}
+
 pub fn set_session_relationship(metadata: &mut SessionMetadata, relationship: SessionRelationship) {
     metadata.relationship = Some(relationship);
 }

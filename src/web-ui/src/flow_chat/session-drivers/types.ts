@@ -175,6 +175,17 @@ export interface SessionDriver {
   ): Promise<string>;
 
   /**
+   * Pin or unpin the session in nav lists. Persisted flavors write
+   * `customMetadata.pinnedAt` through the backend; observer flavors update the
+   * local projection only.
+   */
+  pinSession(
+    context: FlowChatContext,
+    sessionId: string,
+    pinned: boolean,
+  ): Promise<void>;
+
+  /**
    * Make the session able to accept a submission (backend session,
    * hydration). Drivers with nothing to prepare return void — synchronously —
    * so the caller introduces no microtask boundary before the optimistic

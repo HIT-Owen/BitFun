@@ -1807,6 +1807,7 @@ pub const REMOTE_WORKSPACE_COMMAND_POLICIES: &[(&str, RemoteWorkspacePolicy)] = 
         "set_session_memory_mode",
         RemoteWorkspacePolicy::LegacyUnaudited,
     ),
+    ("set_session_pinned", RemoteWorkspacePolicy::RemoteRouted),
     (
         "set_session_thread_goal_status",
         RemoteWorkspacePolicy::LegacyUnaudited,

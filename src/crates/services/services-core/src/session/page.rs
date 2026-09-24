@@ -1,5 +1,6 @@
 //! Session metadata pagination and cursor shaping.
 
+use super::metadata::session_pin_at;
 use super::types::{SessionMetadata, SessionStatus};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -19,6 +20,28 @@ pub struct SessionMetadataPage {
 struct SessionMetadataPageCursor {
     last_active_at: u64,
     session_id: String,
+}
+
+/// Nav-list order: pinned sessions ride above unpinned ones with the most
+/// recent pin first, then the unpinned tail keeps its `last_active_at`
+/// descending order. Pinning must sort here, not only in the UI, because the
+/// nav only loads the first page: a pinned session past page one would be
+/// invisible to a frontend-only reorder.
+fn compare_sessions_for_nav_order(
+    left: &SessionMetadata,
+    right: &SessionMetadata,
+) -> std::cmp::Ordering {
+    let pin_ordering = session_pin_at(right).cmp(&session_pin_at(left));
+    if pin_ordering != std::cmp::Ordering::Equal {
+        return pin_ordering;
+    }
+
+    let active_ordering = right.last_active_at.cmp(&left.last_active_at);
+    if active_ordering != std::cmp::Ordering::Equal {
+        return active_ordering;
+    }
+
+    left.session_id.cmp(&right.session_id)
 }
 
 pub fn empty_session_metadata_page() -> SessionMetadataPage {
@@ -62,6 +85,7 @@ pub fn build_session_metadata_page(
 
         top_level_sessions.push(metadata);
     }
+    top_level_sessions.sort_by(compare_sessions_for_nav_order);
 
     let total_top_level_count = top_level_sessions.len();
     let limit = limit.max(1);
@@ -86,7 +110,7 @@ pub fn build_session_metadata_page(
         sessions.push(metadata);
 
         if let Some(mut children) = children_by_parent.remove(&session_id) {
-            children.sort_by_key(|metadata| std::cmp::Reverse(metadata.last_active_at));
+            children.sort_by(compare_sessions_for_nav_order);
             sessions.extend(children);
         }
     }

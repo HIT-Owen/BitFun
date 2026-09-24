@@ -863,6 +863,24 @@ export async function renameChatSessionTitle(
   return driverForSession(sessionId, session).renameSession(context, sessionId, trimmedTitle);
 }
 
+export async function pinChatSession(
+  context: FlowChatContext,
+  sessionId: string,
+  pinned: boolean
+): Promise<void> {
+  const session = context.flowChatStore.getState().sessions.get(sessionId);
+  if (!session) {
+    throw new Error(`Session does not exist: ${sessionId}`);
+  }
+
+  try {
+    await driverForSession(sessionId, session).pinSession(context, sessionId, pinned);
+  } catch (error) {
+    log.error('Failed to update chat session pin state', { sessionId, pinned, error });
+    throw error;
+  }
+}
+
 export async function reloadSessionTitle(
   context: FlowChatContext,
   sessionId: string,

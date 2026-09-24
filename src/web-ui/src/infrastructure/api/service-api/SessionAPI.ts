@@ -554,6 +554,27 @@ export class SessionAPI {
     }
   }
 
+  async setSessionPinned(
+    sessionId: string,
+    workspacePath: string,
+    pinned: boolean,
+    remoteConnectionId?: string,
+    remoteSshHost?: string
+  ): Promise<void> {
+    try {
+      await api.invoke('set_session_pinned', {
+        request: {
+          session_id: sessionId,
+          workspace_path: workspacePath,
+          pinned,
+          ...remoteSessionFields(remoteConnectionId, remoteSshHost),
+        }
+      });
+    } catch (error) {
+      throw createTauriCommandError('set_session_pinned', error, { sessionId, workspacePath });
+    }
+  }
+
   async archiveAllSessions(
     workspacePath: string,
     remoteConnectionId?: string,

@@ -39,6 +39,7 @@ import {
   deleteChatSession as deleteChatSessionModule,
   archiveChatSession as archiveChatSessionModule,
   renameChatSessionTitle as renameChatSessionTitleModule,
+  pinChatSession as pinChatSessionModule,
   reloadSessionTitle as reloadSessionTitleModule,
   forkChatSession as forkChatSessionModule,
   cleanupSaveState,
@@ -630,6 +631,10 @@ export class FlowChatManager {
 
   async renameChatSessionTitle(sessionId: string, title: string): Promise<string> {
     return renameChatSessionTitleModule(this.context, sessionId, title);
+  }
+
+  async pinChatSession(sessionId: string, pinned: boolean): Promise<void> {
+    return pinChatSessionModule(this.context, sessionId, pinned);
   }
 
   async reloadSessionTitle(sessionId: string): Promise<void> {

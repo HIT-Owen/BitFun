@@ -1517,6 +1517,7 @@ pub async fn run() {
             fork_remote_session_before_turn,
             archive_session,
             unarchive_session,
+            set_session_pinned,
             archive_all_sessions,
             list_archived_sessions,
             delete_all_archived_sessions,

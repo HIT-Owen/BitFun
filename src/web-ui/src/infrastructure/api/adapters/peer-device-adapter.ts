@@ -143,6 +143,7 @@ const HIGH_PRIORITY_COMMANDS = new Set([
   'delete_session',
   'rename_session',
   'archive_session',
+  'set_session_pinned',
   'initialize_workspace_startup_state',
   'get_opened_workspaces',
   'get_recent_workspaces',

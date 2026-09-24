@@ -473,6 +473,16 @@ export const dispatchSessionDriver: SessionDriver = {
     return title;
   },
 
+  async pinSession(
+    context: FlowChatContext,
+    sessionId: string,
+    pinned: boolean,
+  ): Promise<void> {
+    // Observer projection: pin state is a local dismissal-free ordering hint;
+    // the target keeps its durable session without pin metadata.
+    context.flowChatStore.updateSessionPinnedAt(sessionId, pinned ? Date.now() : undefined);
+  },
+
   ensureReady(): void {
     // Nothing to prepare: the target owns the durable session, and submission
     // itself is what creates the job. Deliberately synchronous — see the

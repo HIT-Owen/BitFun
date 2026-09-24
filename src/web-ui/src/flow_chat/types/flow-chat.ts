@@ -379,6 +379,11 @@ export interface Session {
   createdAt: number;
   lastActiveAt: number;
   lastFinishedAt?: number;
+  /**
+   * UI pin state derived from persisted `customMetadata.pinnedAt`:
+   * set to the pin timestamp; undefined = unpinned.
+   */
+  pinnedAt?: number;
   updatedAt?: number;
   
   // Persist the last error; real-time errors come from context.errorMessage.

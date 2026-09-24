@@ -25,8 +25,8 @@ use bitfun_core::service::remote_ssh::workspace_state::{
 };
 use bitfun_core::service::remote_ssh::SSHConnectionManager;
 use bitfun_core::service::session::{
-    DialogTurnData, DialogTurnKind, SessionContextUsage, SessionMetadata, SessionStatus,
-    SessionTranscriptExport, SessionTranscriptExportOptions, SessionTurnCatalog,
+    set_session_pin_state, DialogTurnData, DialogTurnKind, SessionContextUsage, SessionMetadata,
+    SessionStatus, SessionTranscriptExport, SessionTranscriptExportOptions, SessionTurnCatalog,
     SessionTurnWindowResponse,
 };
 use bitfun_core::service::session_usage::SessionUsageReport;
@@ -713,6 +713,25 @@ impl DesktopSessionApplication {
             })
             .await
             .map_err(|error| DesktopSessionApplicationError::Runtime(error.into_message()))
+    }
+
+    /// Pin state is UI metadata: it updates the persisted `customMetadata`
+    /// without loading the session into the runtime, mirroring the storage-path
+    /// access the list/read commands use.
+    pub(crate) async fn set_session_pinned(
+        &self,
+        request: DesktopSessionScopeRequest,
+        session_id: String,
+        pinned: bool,
+    ) -> DesktopSessionApplicationResult<()> {
+        let scope = self.resolved_scope(request).await;
+        let storage_path = self.storage_path(&scope);
+        self.compatibility
+            .update_persisted_session_metadata(&storage_path, &session_id, |metadata| {
+                set_session_pin_state(metadata, pinned);
+            })
+            .await
+            .map_err(|error| DesktopSessionApplicationError::Core(error.to_string()))
     }
 
     pub(crate) async fn delete_session(

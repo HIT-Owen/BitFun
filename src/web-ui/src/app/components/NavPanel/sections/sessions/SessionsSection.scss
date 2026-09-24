@@ -248,6 +248,12 @@
     white-space: nowrap;
   }
 
+  &__inline-item-pin {
+    flex: 0 0 auto;
+    color: var(--bf-appearance-token-color-accent-400);
+    opacity: 0.9;
+  }
+
   &__inline-item-btw-badge {
     flex: 0 0 auto;
     display: inline-flex;

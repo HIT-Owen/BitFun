@@ -197,6 +197,13 @@ export function deriveLastFinishedAtFromMetadata(
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
+export function deriveSessionPinnedAtFromMetadata(
+  metadata?: Pick<SessionMetadata, 'customMetadata'> | null
+): number | undefined {
+  const value = metadata?.customMetadata?.pinnedAt;
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
 /**
  * Sidebar grouping anchor for remote edit-rerun branches.
  *

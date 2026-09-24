@@ -127,3 +127,112 @@ fn session_page_keeps_edit_branch_top_level_when_its_source_is_missing() {
     assert_eq!(page.total_top_level_count, 1);
     assert_eq!(page.sessions[0].session_id, "edit-branch");
 }
+
+#[test]
+fn session_page_pins_sessions_above_unpinned_newest_pin_first() {
+    let unpinned_newest = metadata("unpinned-newest", 3_000);
+    let mut older_pin = metadata("older-pin", 1_000);
+    older_pin.custom_metadata = Some(serde_json::json!({ "pinnedAt": 100 }));
+    let mut newer_pin = metadata("newer-pin", 2_000);
+    newer_pin.custom_metadata = Some(serde_json::json!({ "pinnedAt": 200 }));
+
+    let page = build_session_metadata_page(vec![unpinned_newest, older_pin, newer_pin], None, 10);
+
+    let session_ids = page
+        .sessions
+        .iter()
+        .map(|metadata| metadata.session_id.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        session_ids,
+        vec!["newer-pin", "older-pin", "unpinned-newest"]
+    );
+}
+
+#[test]
+fn session_page_keeps_unpinned_last_active_order_and_paginates_pinned_first() {
+    let mut pinned_old = metadata("pinned-old", 100);
+    pinned_old.custom_metadata = Some(serde_json::json!({ "pinnedAt": 500 }));
+    let unpinned_mid = metadata("unpinned-mid", 2_000);
+    let unpinned_old = metadata("unpinned-old", 1_000);
+
+    let first_page = build_session_metadata_page(
+        vec![
+            unpinned_mid.clone(),
+            unpinned_old.clone(),
+            pinned_old.clone(),
+        ],
+        None,
+        2,
+    );
+    let first_ids = first_page
+        .sessions
+        .iter()
+        .map(|metadata| metadata.session_id.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(first_ids, vec!["pinned-old", "unpinned-mid"]);
+    assert!(first_page.has_more);
+
+    let second_page = build_session_metadata_page(
+        vec![unpinned_mid, unpinned_old, pinned_old],
+        first_page.next_cursor.as_deref(),
+        2,
+    );
+    let second_ids = second_page
+        .sessions
+        .iter()
+        .map(|metadata| metadata.session_id.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(second_ids, vec!["unpinned-old"]);
+    assert!(!second_page.has_more);
+}
+
+#[test]
+fn session_page_treats_missing_or_cleared_pin_as_unpinned() {
+    let mut cleared_pin = metadata("cleared-pin", 900);
+    cleared_pin.custom_metadata = Some(serde_json::json!({}));
+    let regular = metadata("regular", 800);
+    let unpinned_newest = metadata("unpinned-newest", 3_000);
+
+    let page = build_session_metadata_page(vec![cleared_pin, regular, unpinned_newest], None, 10);
+
+    let session_ids = page
+        .sessions
+        .iter()
+        .map(|metadata| metadata.session_id.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        session_ids,
+        vec!["unpinned-newest", "cleared-pin", "regular"]
+    );
+}
+
+#[test]
+fn session_page_pins_children_within_their_parent_group() {
+    let parent = metadata("parent", 1_000);
+    let mut unpinned_child = metadata("unpinned-child", 3_000);
+    unpinned_child.relationship = Some(SessionRelationship {
+        kind: Some(SessionRelationshipKind::Btw),
+        parent_session_id: Some("parent".to_string()),
+        ..Default::default()
+    });
+    let mut pinned_child = metadata("pinned-child", 2_000);
+    pinned_child.relationship = Some(SessionRelationship {
+        kind: Some(SessionRelationshipKind::Btw),
+        parent_session_id: Some("parent".to_string()),
+        ..Default::default()
+    });
+    pinned_child.custom_metadata = Some(serde_json::json!({ "pinnedAt": 300 }));
+
+    let page = build_session_metadata_page(vec![parent, unpinned_child, pinned_child], None, 10);
+
+    let session_ids = page
+        .sessions
+        .iter()
+        .map(|metadata| metadata.session_id.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        session_ids,
+        vec!["parent", "pinned-child", "unpinned-child"]
+    );
+}

@@ -11,6 +11,7 @@ use bitfun_agent_runtime::sdk::{
 };
 use bitfun_core::agentic::core::Session;
 use bitfun_core::agentic::get_agent_registry;
+use bitfun_core::service::session::set_session_pin_state;
 use bitfun_core::util::errors::BitFunError;
 use bitfun_runtime_ports::{
     AgentSessionArchiveRequest, AgentSessionCreateRequest, AgentSessionDeleteRequest,
@@ -436,6 +437,28 @@ pub(crate) async fn archive_session(state: &PeerHostState, args: &Value) -> Resu
         })
         .await
         .map_err(|error| format!("Failed to archive session: {}", error.into_message()))?;
+    Ok(Value::Null)
+}
+
+pub(crate) async fn set_session_pinned(
+    state: &PeerHostState,
+    args: &Value,
+) -> Result<Value, String> {
+    let request = request_value(args);
+    let session_id = validated_session_id(request)?;
+    let scope = ensure_session_workspace_runtime_ownership(state, request)?;
+    let workspace_path = resolved_session_storage_scope(state, scope).await?;
+    let pinned = request
+        .get("pinned")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| "pinned is required".to_string())?;
+    state
+        .compatibility
+        .update_persisted_session_metadata(&workspace_path, &session_id, |metadata| {
+            set_session_pin_state(metadata, pinned);
+        })
+        .await
+        .map_err(|error| format!("Failed to update session pin state: {error}"))?;
     Ok(Value::Null)
 }
 

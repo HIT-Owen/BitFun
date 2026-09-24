@@ -78,6 +78,43 @@ describe('sessionOrdering', () => {
     expect(orderedIds).toEqual(['first', 'second']);
   });
 
+  it('nav stable sort pins sessions above unpinned ones with the newest pin first', () => {
+    const sessions = [
+      createSession({ sessionId: 'newest-unpinned', createdAt: 5000 }),
+      createSession({ sessionId: 'older-pin', createdAt: 1000, pinnedAt: 100 }),
+      createSession({ sessionId: 'newest-pin', createdAt: 900, pinnedAt: 200 }),
+      createSession({ sessionId: 'older-unpinned', createdAt: 4000 }),
+    ];
+
+    const orderedIds = [...sessions].sort(compareSessionsForNavStable).map(s => s.sessionId);
+    expect(orderedIds).toEqual(['newest-pin', 'older-pin', 'newest-unpinned', 'older-unpinned']);
+  });
+
+  it('nav stable sort treats missing pin timestamps as unpinned', () => {
+    const sessions = [
+      createSession({ sessionId: 'pinned', createdAt: 1000, pinnedAt: 100 }),
+      createSession({ sessionId: 'unpinned', createdAt: 2000 }),
+    ];
+    const orderedIds = [...sessions].sort(compareSessionsForNavStable).map(s => s.sessionId);
+    expect(orderedIds).toEqual(['pinned', 'unpinned']);
+
+    const unpinnedAgain = [
+      createSession({ sessionId: 'pinned', createdAt: 1000 }),
+      createSession({ sessionId: 'unpinned', createdAt: 2000 }),
+    ];
+    const fallbackIds = [...unpinnedAgain].sort(compareSessionsForNavStable).map(s => s.sessionId);
+    expect(fallbackIds).toEqual(['unpinned', 'pinned']);
+  });
+
+  it('nav stable sort falls back to createdAt among pins with equal timestamps', () => {
+    const sessions = [
+      createSession({ sessionId: 'b', createdAt: 2000, pinnedAt: 100 }),
+      createSession({ sessionId: 'a', createdAt: 3000, pinnedAt: 100 }),
+    ];
+    const orderedIds = [...sessions].sort(compareSessionsForNavStable).map(s => s.sessionId);
+    expect(orderedIds).toEqual(['a', 'b']);
+  });
+
   it('sorts persisted metadata by lastFinishedAt before createdAt without using lastActiveAt', () => {
     const metadata = [
       { sessionId: 'older-new', createdAt: 1000, lastActiveAt: 9000 },

@@ -53,6 +53,7 @@ import type { SessionMetadataPage } from '@/infrastructure/api/service-api/Sessi
 import {
   deriveLastFinishedAtFromMetadata,
   deriveForkOriginParentIdFromMetadata,
+  deriveSessionPinnedAtFromMetadata,
   deriveSessionRelationshipFromMetadata,
   normalizeSessionRelationship,
 } from '../utils/sessionMetadata';
@@ -5983,6 +5984,33 @@ export class FlowChatStore {
     }
   }
 
+  /**
+   * Local pin-state projection for nav lists. The persisted source of truth is
+   * `customMetadata.pinnedAt`, written by the pin API; this only reorders the
+   * in-memory list without waiting for a metadata round trip.
+   */
+  public updateSessionPinnedAt(sessionId: string, pinnedAt: number | undefined): void {
+    this.setState(prev => {
+      const session = prev.sessions.get(sessionId);
+      if (!session) return prev;
+
+      const currentPinnedAt = typeof session.pinnedAt === 'number' && Number.isFinite(session.pinnedAt)
+        ? session.pinnedAt
+        : undefined;
+      if (currentPinnedAt === pinnedAt) return prev;
+
+      const updatedSession: Session = {
+        ...session,
+        pinnedAt,
+      };
+
+      const newSessions = new Map(prev.sessions);
+      newSessions.set(sessionId, updatedSession);
+
+      return { ...prev, sessions: newSessions };
+    });
+  }
+
   public async updateSessionTitle(
     sessionId: string,
     title: string,
@@ -6384,6 +6412,7 @@ export class FlowChatStore {
         const relationship = deriveSessionRelationshipFromMetadata(metadata);
         const forkOriginParentId = deriveForkOriginParentIdFromMetadata(metadata);
         const lastFinishedAt = deriveLastFinishedAtFromMetadata(metadata);
+        const pinnedAt = deriveSessionPinnedAtFromMetadata(metadata);
         const titleState = deriveSessionTitleStateFromMetadata(metadata);
         const hasDynamicDefaultTitle = titleState.titleSource === 'i18n';
         const remoteScope = persistedSessionRemoteScope(
@@ -6431,6 +6460,7 @@ export class FlowChatStore {
             createdAt: metadata.createdAt,
             lastActiveAt: metadata.lastActiveAt,
             lastFinishedAt,
+            pinnedAt,
             error: null,
             isHistorical: true,
             historyState: 'metadata-only',
@@ -6769,6 +6799,7 @@ export class FlowChatStore {
           const relationship = deriveSessionRelationshipFromMetadata(metadata);
           const forkOriginParentId = deriveForkOriginParentIdFromMetadata(metadata);
           const lastFinishedAt = deriveLastFinishedAtFromMetadata(metadata);
+          const pinnedAt = deriveSessionPinnedAtFromMetadata(metadata);
           const titleState = deriveSessionTitleStateFromMetadata(metadata);
           const hasDynamicDefaultTitle = titleState.titleSource === 'i18n';
           const remoteScope = persistedSessionRemoteScope(
@@ -6813,6 +6844,7 @@ export class FlowChatStore {
               createdAt: metadata.createdAt,
               lastActiveAt: metadata.lastActiveAt,
               lastFinishedAt,
+              pinnedAt,
               error: null,
               isHistorical: true,
               historyState: 'metadata-only',
