@@ -6,7 +6,7 @@ use crate::api::path_target::{
     create_directory as create_desktop_directory, create_empty_file,
     delete_directory as delete_desktop_directory, delete_file as delete_desktop_file,
     get_path_metadata, path_exists, read_text_file, rename_path, resolve_desktop_path_target,
-    write_text_file, DesktopPathTarget,
+    runtime_root_for_workspace_info, write_text_file, DesktopPathTarget,
 };
 use crate::api::search_api::{
     build_content_search_request, group_search_results, prepare_content_search_runner,
@@ -4424,6 +4424,30 @@ pub async fn reveal_in_explorer(
         }
     };
     reveal_local_path_in_explorer(path, &request.path)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RevealWorkspacePlansDirRequest {
+    #[serde(rename = "workspaceId")]
+    pub workspace_id: String,
+}
+
+#[tauri::command]
+pub async fn reveal_workspace_plans_dir(
+    state: State<'_, AppState>,
+    request: RevealWorkspacePlansDirRequest,
+) -> Result<(), String> {
+    let workspace = state
+        .workspace_service
+        .get_workspace(&request.workspace_id)
+        .await
+        .ok_or_else(|| format!("Workspace not found: {}", request.workspace_id))?;
+    let mut plans_dir = runtime_root_for_workspace_info(&workspace)?;
+    plans_dir.push("plans");
+    tokio::fs::create_dir_all(&plans_dir)
+        .await
+        .map_err(|e| format!("Failed to create plans directory: {}", e))?;
+    reveal_local_path_in_explorer(&plans_dir, &plans_dir.to_string_lossy())
 }
 
 pub(crate) fn reveal_local_path_in_explorer(

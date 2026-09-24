@@ -986,11 +986,21 @@ export class WorkspaceAPI {
    
   async revealInExplorer(path: string): Promise<void> {
     try {
-      await api.invoke('reveal_in_explorer', { 
-        request: { path } 
+      await api.invoke('reveal_in_explorer', {
+        request: { path }
       });
     } catch (error) {
       throw createTauriCommandError('reveal_in_explorer', error, { path });
+    }
+  }
+
+  async revealWorkspacePlansDir(workspaceId: string): Promise<void> {
+    try {
+      await api.invoke('reveal_workspace_plans_dir', {
+        request: { workspaceId }
+      });
+    } catch (error) {
+      throw createTauriCommandError('reveal_workspace_plans_dir', error, { workspaceId });
     }
   }
 

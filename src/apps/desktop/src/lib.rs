@@ -1324,6 +1324,7 @@ pub async fn run() {
             rename_file,
             export_local_file_to_path,
             reveal_in_explorer,
+            reveal_workspace_plans_dir,
             get_file_tree,
             explorer_get_file_tree,
             get_directory_children,

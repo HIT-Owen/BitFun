@@ -1618,6 +1618,10 @@ pub const REMOTE_WORKSPACE_COMMAND_POLICIES: &[(&str, RemoteWorkspacePolicy)] = 
     ),
     ("reveal_in_explorer", RemoteWorkspacePolicy::LocalOnly),
     (
+        "reveal_workspace_plans_dir",
+        RemoteWorkspacePolicy::LocalOnly,
+    ),
+    (
         "review_platform_clear_auth_token",
         RemoteWorkspacePolicy::WorkspaceAgnostic,
     ),

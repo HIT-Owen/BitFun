@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import { Folder, FolderOpen, MoreHorizontal, FolderSearch, Plus, ChevronDown, Trash2, RotateCcw, Copy, FileText, Bot, Link2, ListChecks, Loader2, Clock3, ShieldCheck, Pencil, Server } from 'lucide-react';
+import { Folder, FolderOpen, MoreHorizontal, FolderSearch, Plus, ChevronDown, Trash2, RotateCcw, Copy, FileText, Bot, Link2, ListChecks, Loader2, Clock3, ShieldCheck, Pencil, Server, ClipboardList } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { DotMatrixArrowRightIcon } from './DotMatrixArrowRightIcon';
 import { Button, ConfirmDialog, InputDialog, Modal, Tooltip } from '@/component-library';
@@ -611,6 +611,18 @@ const WorkspaceItem: React.FC<WorkspaceItemProps> = ({
     }
   }, [t, workspace]);
 
+  const handleRevealPlansDir = useCallback(async () => {
+    setMenuOpen(false);
+    try {
+      await workspaceAPI.revealWorkspacePlansDir(workspace.id);
+    } catch (error) {
+      notificationService.error(
+        error instanceof Error ? error.message : t('nav.workspaces.revealPlansFailed'),
+        { duration: 4000 }
+      );
+    }
+  }, [t, workspace.id]);
+
   const handleCopyWorkspacePath = useCallback(async () => {
     setMenuOpen(false);
     const path = workspace.rootPath;
@@ -938,6 +950,17 @@ const WorkspaceItem: React.FC<WorkspaceItemProps> = ({
                   >
                   <FolderSearch size={13} />
                   <span className="bitfun-nav-panel__workspace-item-menu-label">{t('nav.workspaces.actions.reveal')}</span>
+                </button>
+                  <button
+                    type="button"
+                    data-bf-component="workspace-item"
+                    data-bf-part="menuItem"
+                    className="bitfun-nav-panel__workspace-item-menu-item"
+                    onClick={() => { void handleRevealPlansDir(); }}
+                    data-testid="nav-workspace-menu-reveal-plans"
+                  >
+                  <ClipboardList size={13} />
+                  <span className="bitfun-nav-panel__workspace-item-menu-label">{t('nav.workspaces.actions.revealPlans')}</span>
                 </button>
                 {(isDefaultAssistantWorkspace || isDeletableAssistantWorkspace) ? (
                   <>
@@ -1467,6 +1490,17 @@ const WorkspaceItem: React.FC<WorkspaceItemProps> = ({
                 >
                   <FolderSearch size={13} />
                   <span className="bitfun-nav-panel__workspace-item-menu-label">{t('nav.workspaces.actions.reveal')}</span>
+                </button>
+                <button
+                  type="button"
+                  data-bf-component="workspace-item"
+                  data-bf-part="menuItem"
+                  className="bitfun-nav-panel__workspace-item-menu-item"
+                  onClick={() => { void handleRevealPlansDir(); }}
+                  data-testid="nav-workspace-menu-reveal-plans"
+                >
+                  <ClipboardList size={13} />
+                  <span className="bitfun-nav-panel__workspace-item-menu-label">{t('nav.workspaces.actions.revealPlans')}</span>
                 </button>
                 <div className="bitfun-nav-panel__workspace-item-menu-divider" data-bf-component="workspace-item" data-bf-part="menuDivider" />
                 <button

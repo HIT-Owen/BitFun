@@ -202,6 +202,8 @@
       "parentSession": "父会话",
       "childSourceWithoutTurn": "来自 {{parentTitle}}",
       "childSourceWithTurn": "来自 {{parentTitle}} · 第 {{turnIndex}} 轮",
+      "editRerunBadge": "编辑重跑",
+      "editRerunSource": "来自 {{parentTitle}} 的编辑重跑分支",
       "reviewRunning": "审核中",
       "deepReviewRunning": "审核中",
       "unreadCompleted": "已完成 — 未读",
@@ -372,6 +374,7 @@
       "dropBefore": "松开后插入到此项前",
       "dropAfter": "松开后插入到此项后",
       "revealFailed": "打开工作区目录失败",
+      "revealPlansFailed": "打开计划书目录失败",
       "copyPathFailed": "复制路径失败",
       "createSessionFailed": "新建会话失败",
       "startingAcpSession": "会话启动中",
@@ -409,6 +412,7 @@
         "rename": "重命名项目",
         "copyPath": "复制路径",
         "reveal": "在资源管理器中打开",
+        "revealPlans": "打开计划书目录",
         "close": "关闭工作区"
       },
       "renameDialog": {

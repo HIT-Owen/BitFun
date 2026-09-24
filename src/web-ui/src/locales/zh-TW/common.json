@@ -202,6 +202,8 @@
       "parentSession": "父會話",
       "childSourceWithoutTurn": "來自 {{parentTitle}}",
       "childSourceWithTurn": "來自 {{parentTitle}} · 第 {{turnIndex}} 輪",
+      "editRerunBadge": "編輯重跑",
+      "editRerunSource": "來自 {{parentTitle}} 的編輯重跑分支",
       "reviewRunning": "審核中",
       "deepReviewRunning": "審核中",
       "unreadCompleted": "已完成 — 未讀",
@@ -372,6 +374,7 @@
       "dropBefore": "鬆開後插入到此項前",
       "dropAfter": "鬆開後插入到此項後",
       "revealFailed": "開啟工作區目錄失敗",
+      "revealPlansFailed": "開啟計畫書目錄失敗",
       "copyPathFailed": "複製路徑失敗",
       "createSessionFailed": "新增會話失敗",
       "startingAcpSession": "會話啟動中",
@@ -409,6 +412,7 @@
         "rename": "重新命名專案",
         "copyPath": "複製路徑",
         "reveal": "在資源管理器中開啟",
+        "revealPlans": "開啟計畫書目錄",
         "close": "關閉工作區"
       },
       "renameDialog": {

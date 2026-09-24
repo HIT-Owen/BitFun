@@ -56,7 +56,9 @@ impl DesktopPathTarget {
     }
 }
 
-fn runtime_root_for_workspace_info(workspace: &WorkspaceInfo) -> Result<PathBuf, String> {
+pub(crate) fn runtime_root_for_workspace_info(
+    workspace: &WorkspaceInfo,
+) -> Result<PathBuf, String> {
     if workspace.workspace_kind == WorkspaceKind::Remote {
         let ssh_host = workspace
             .metadata

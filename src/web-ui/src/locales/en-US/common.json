@@ -202,6 +202,8 @@
       "parentSession": "Parent session",
       "childSourceWithoutTurn": "From {{parentTitle}}",
       "childSourceWithTurn": "From {{parentTitle}} · Turn {{turnIndex}}",
+      "editRerunBadge": "Edited rerun",
+      "editRerunSource": "Edited rerun branch from {{parentTitle}}",
       "reviewRunning": "Reviewing",
       "deepReviewRunning": "Reviewing",
       "unreadCompleted": "Completed — unread",
@@ -372,6 +374,7 @@
       "dropBefore": "Release to insert before",
       "dropAfter": "Release to insert after",
       "revealFailed": "Failed to reveal workspace folder",
+      "revealPlansFailed": "Failed to open plans folder",
       "copyPathFailed": "Failed to copy path",
       "createSessionFailed": "Failed to create session",
       "startingAcpSession": "Session starting",
@@ -409,6 +412,7 @@
         "rename": "Rename project",
         "copyPath": "Copy path",
         "reveal": "Reveal in explorer",
+        "revealPlans": "Open plans folder",
         "close": "Close workspace"
       },
       "renameDialog": {
