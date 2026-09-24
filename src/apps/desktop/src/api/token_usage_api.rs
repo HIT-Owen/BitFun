@@ -206,7 +206,11 @@ fn model_key_for(record: &TokenUsageRecord) -> String {
     if record.model_config_id.is_empty() {
         format!("m:{}", record.effective_model_name)
     } else {
-        record.model_config_id.clone()
+        // One config may serve different model names over time (a local vLLM
+        // endpoint can be re-deployed with another model while keeping the same
+        // BitFun config id). Key by config + model name so each name reports its
+        // own usage instead of being merged under the first-seen name.
+        format!("{}|{}", record.model_config_id, record.effective_model_name)
     }
 }
 
