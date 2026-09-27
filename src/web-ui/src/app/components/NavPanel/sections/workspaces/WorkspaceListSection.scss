@@ -406,6 +406,9 @@
   &__workspace-item-icon-default {
     opacity: 1;
     transform: scale(1);
+    /* Folder / server / active-arrow icons all take the workspace accent hue.
+       The custom property is always set inline on the workspace item root. */
+    color: var(--bitfun-nav-workspace-accent);
   }
 
   &__workspace-item-icon-toggle {
@@ -430,6 +433,10 @@
     white-space: nowrap;
     font-size: var(--bf-appearance-token-font-size-xs);
     font-weight: 600;
+    /* Workspace names keep the per-workspace accent so they stand apart from
+       the neutral session rows rendered underneath. The custom property is
+       always set inline on the workspace item root. */
+    color: var(--bitfun-nav-workspace-accent);
   }
 
   &__workspace-item:not(.is-active) &__workspace-item-label {
@@ -438,7 +445,6 @@
 
   &__workspace-item.is-active &__workspace-item-label {
     font-weight: 700;
-    color: var(--bf-appearance-token-color-text-primary);
   }
 
   &__workspace-item-title {

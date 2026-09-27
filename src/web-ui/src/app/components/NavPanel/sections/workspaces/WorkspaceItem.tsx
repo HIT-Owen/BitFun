@@ -24,6 +24,7 @@ import {
 import { findReusableEmptySessionId } from '@/app/utils/projectSessionWorkspace';
 import type { AcpClientInfo } from '@/infrastructure/api/service-api/ACPClientAPI';
 import { loadWorkspaceAcpMenuClients } from './workspaceAcpMenuClients';
+import { getWorkspaceAccentColor } from './workspaceAccentColor';
 import SessionsSection from '../sessions/SessionsSection';
 import {
   WorkspaceKind,
@@ -138,6 +139,7 @@ const WorkspaceItem: React.FC<WorkspaceItemProps> = ({
       : workspace.name;
   const relatedPathCount = workspace.relatedPaths?.length ?? 0;
   const workspaceIsRemote = isRemoteWorkspace(workspace);
+  const workspaceAccentColor = getWorkspaceAccentColor(workspace);
   const canShowSearchIndex =
     isActive
     && workspaceSearchEnabled
@@ -1093,7 +1095,8 @@ const WorkspaceItem: React.FC<WorkspaceItemProps> = ({
     data-testid="nav-workspace-item"
     data-workspace-id={workspace.id}
     data-workspace-kind={workspace.workspaceKind}
-    data-workspace-active={isActive ? 'true' : 'false'}>
+    data-workspace-active={isActive ? 'true' : 'false'}
+    style={{ '--bitfun-nav-workspace-accent': workspaceAccentColor } as React.CSSProperties}>
       <div
         data-bf-component="workspace-item"
         data-bf-part="card"
