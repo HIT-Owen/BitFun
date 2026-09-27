@@ -411,6 +411,7 @@ const AIModelConfig: React.FC = () => {
   const [remoteModelOptions, setRemoteModelOptions] = useState<RemoteModelOption[]>([]);
   const [isFetchingRemoteModels, setIsFetchingRemoteModels] = useState(false);
   const [remoteModelsError, setRemoteModelsError] = useState<string | null>(null);
+  const [remoteModelsNotice, setRemoteModelsNotice] = useState<string | null>(null);
   const [hasAttemptedRemoteFetch, setHasAttemptedRemoteFetch] = useState(false);
   const [selectedModelDrafts, setSelectedModelDrafts] = useState<SelectedModelDraft[]>([]);
   const [editingProviderModelIds, setEditingProviderModelIds] = useState<Set<string>>(new Set());
@@ -686,6 +687,7 @@ const AIModelConfig: React.FC = () => {
     setRemoteModelOptions([]);
     setIsFetchingRemoteModels(false);
     setRemoteModelsError(null);
+    setRemoteModelsNotice(null);
     setHasAttemptedRemoteFetch(false);
     lastRemoteFetchSignatureRef.current = null;
     activeRemoteFetchSignatureRef.current = null;
@@ -943,22 +945,29 @@ const AIModelConfig: React.FC = () => {
     activeRemoteFetchSignatureRef.current = requestSignature;
 
     try {
-      const remoteModels = await aiApi.listModelsByConfig(discoveryConfig);
-      const dedupedModels = remoteModels.filter((model, index, arr) => (
+      const result = await aiApi.listModelsByConfig(discoveryConfig);
+      const dedupedModels = result.models.filter((model, index, arr) => (
         !!model.id && arr.findIndex(item => item.id === model.id) === index
       ));
 
       if (dedupedModels.length === 0) {
         setRemoteModelOptions([]);
+        setRemoteModelsNotice(null);
         setRemoteModelsError(t('providerSelection.fetchEmptyFallback'));
         return;
       }
 
       setRemoteModelOptions(dedupedModels);
       setRemoteModelsError(null);
+      setRemoteModelsNotice(
+        result.fallback_warning
+          ? t('providerSelection.fallbackCatalogNotice', { detail: result.fallback_warning })
+          : null,
+      );
     } catch (error) {
       log.warn('Failed to fetch remote model list, falling back to presets', { error });
       setRemoteModelOptions([]);
+      setRemoteModelsNotice(null);
       setRemoteModelsError(t('providerSelection.fetchFailedFallback'));
     } finally {
       setIsFetchingRemoteModels(false);
@@ -2124,13 +2133,15 @@ const AIModelConfig: React.FC = () => {
       ? t('providerSelection.fetchingModels')
       : remoteModelsError
         ? remoteModelsError
-        : remoteModelOptions.length > 0
-          ? null
-          : fetchedOrPresetModelOptions.length > 0
-            ? t('providerSelection.usingPresetModels')
-            : hasAttemptedRemoteFetch
-              ? t('providerSelection.noPresetModels')
-              : null;
+        : remoteModelsNotice
+          ? remoteModelsNotice
+          : remoteModelOptions.length > 0
+            ? null
+            : fetchedOrPresetModelOptions.length > 0
+              ? t('providerSelection.usingPresetModels')
+              : hasAttemptedRemoteFetch
+                ? t('providerSelection.noPresetModels')
+                : null;
     const selectedModelValues = selectedModelDrafts.map(draft => draft.modelName);
     const renderModelPickerValue = (option?: SelectOption | SelectOption[]) => {
       const selectedOptions = Array.isArray(option) ? option : option ? [option] : [];

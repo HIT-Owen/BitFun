@@ -134,6 +134,7 @@
     "fetchSuccessCount": "Fetched {{count}} models from the provider",
     "fetchFailedFallback": "Failed to fetch model list, fell back to common preset models",
     "fetchEmptyFallback": "Provider returned no models, fell back to common preset models",
+    "fallbackCatalogNotice": "Live model list unavailable; showing the local fallback catalog. You can enter model names manually below. Reason: {{detail}}",
     "fillApiKeyBeforeFetch": "Enter the API key before fetching models",
     "usingPresetModels": "Currently showing common preset models",
     "noPresetModels": "No models available. Fetch the model list or enter a model name manually",

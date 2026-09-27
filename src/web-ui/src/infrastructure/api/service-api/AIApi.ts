@@ -46,6 +46,12 @@ export interface RemoteModelInfo {
   display_name?: string;
 }
 
+export interface RemoteModelList {
+  models: RemoteModelInfo[];
+  /** Set when a local fallback catalog replaced the provider's live list. */
+  fallback_warning?: string;
+}
+
 export interface AIModelCatalogEntry {
   id: string;
   name: string;
@@ -370,9 +376,9 @@ export class AIApi {
     }
   }
 
-  async listModelsByConfig(config: any): Promise<RemoteModelInfo[]> {
+  async listModelsByConfig(config: any): Promise<RemoteModelList> {
     try {
-      return await api.invoke<RemoteModelInfo[]>('list_ai_models_by_config', {
+      return await api.invoke<RemoteModelList>('list_ai_models_by_config', {
         request: { config }
       });
     } catch (error) {

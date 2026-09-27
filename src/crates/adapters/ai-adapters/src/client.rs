@@ -408,13 +408,25 @@ impl AIClient {
     }
 
     pub async fn list_models(&self) -> Result<Vec<RemoteModelInfo>> {
+        Ok(self.list_models_detailed().await?.models)
+    }
+
+    /// Live model discovery with the optional fallback warning attached, for
+    /// surfaces that explain to the user why the returned list may be stale.
+    pub async fn list_models_detailed(&self) -> Result<RemoteModelList> {
         match ApiFormat::parse(&self.config.format)? {
             ApiFormat::OpenAIChat | ApiFormat::OpenAIResponses => {
                 openai::common::list_models(self).await
             }
-            ApiFormat::Anthropic => anthropic::discovery::list_models(self).await,
-            ApiFormat::Gemini => gemini::discovery::list_models(self).await,
-            ApiFormat::GeminiCodeAssist => gemini::code_assist::list_models(self).await,
+            ApiFormat::Anthropic => anthropic::discovery::list_models(self)
+                .await
+                .map(RemoteModelList::live),
+            ApiFormat::Gemini => gemini::discovery::list_models(self)
+                .await
+                .map(RemoteModelList::live),
+            ApiFormat::GeminiCodeAssist => gemini::code_assist::list_models(self)
+                .await
+                .map(RemoteModelList::live),
         }
     }
 }

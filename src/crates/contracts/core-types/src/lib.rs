@@ -22,7 +22,7 @@ pub use ai::{
     ProviderCatalogProvider, ProviderCatalogSource, ProviderCatalogUpstreamProvider, ProxyConfig,
     ReasoningCapabilityStatus, ReasoningCatalogBinding, ReasoningCatalogProjection,
     ReasoningCatalogProjectionRequest, ReasoningConfig, ReasoningPreset, ReasoningPresetAction,
-    ReasoningPresetDescriptor, ReasoningPresetSource, RemoteModelInfo, ToolCall,
+    ReasoningPresetDescriptor, ReasoningPresetSource, RemoteModelInfo, RemoteModelList, ToolCall,
     ToolCallConfirmationDetails, ToolCallRequestInfo, ToolCallResponseInfo, ToolDefinition,
 };
 pub use errors::{AiErrorDetail, ErrorCategory};

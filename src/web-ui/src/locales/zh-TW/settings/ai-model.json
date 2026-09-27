@@ -134,6 +134,7 @@
     "fetchSuccessCount": "已從供應商拉取 {{count}} 個模型",
     "fetchFailedFallback": "拉取模型列表失敗，已回退到常用預設模型",
     "fetchEmptyFallback": "供應商未返回可用模型，已回退到常用預設模型",
+    "fallbackCatalogNotice": "線上模型列表獲取失敗，已顯示本地兜底列表，可在下方手動輸入模型名。原因：{{detail}}",
     "fillApiKeyBeforeFetch": "請先填寫 API Key 再獲取模型列表",
     "usingPresetModels": "目前顯示的是常用預設模型",
     "noPresetModels": "暫無可用模型，請獲取模型列表或手動輸入模型名",

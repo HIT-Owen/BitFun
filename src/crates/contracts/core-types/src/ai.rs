@@ -807,3 +807,25 @@ pub struct RemoteModelInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
 }
+
+/// Live model discovery result.
+///
+/// `fallback_warning` is set when the provider's live model list could not be
+/// fetched and a local fallback catalog was returned instead. It carries a
+/// short English reason so surfaces can explain why the list may be stale.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteModelList {
+    pub models: Vec<RemoteModelInfo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_warning: Option<String>,
+}
+
+impl RemoteModelList {
+    /// Wraps a live (non-fallback) model list.
+    pub fn live(models: Vec<RemoteModelInfo>) -> Self {
+        Self {
+            models,
+            fallback_warning: None,
+        }
+    }
+}

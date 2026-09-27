@@ -7,7 +7,8 @@ use crate::client::utils::{dedupe_remote_models, normalize_base_url_for_discover
 use crate::client::AIClient;
 use crate::providers::shared;
 use crate::types::{
-    ReasoningPresetAction, ReasoningPresetDescriptor, RemoteModelInfo, ToolDefinition,
+    ReasoningPresetAction, ReasoningPresetDescriptor, RemoteModelInfo, RemoteModelList,
+    ToolDefinition,
 };
 use anyhow::{anyhow, Result};
 use log::warn;
@@ -131,7 +132,7 @@ pub(crate) fn resolve_models_url(client: &AIClient) -> String {
     format!("{}/models", base)
 }
 
-pub(crate) async fn list_models(client: &AIClient) -> Result<Vec<RemoteModelInfo>> {
+pub(crate) async fn list_models(client: &AIClient) -> Result<RemoteModelList> {
     let url = resolve_models_url(client);
 
     // Codex CLI's ChatGPT backend (`chatgpt.com/backend-api/codex`) hosts a
@@ -149,7 +150,7 @@ pub(crate) async fn list_models(client: &AIClient) -> Result<Vec<RemoteModelInfo
         .error_for_status()?;
 
     let payload: OpenAIModelsResponse = response.json().await?;
-    Ok(dedupe_remote_models(
+    Ok(RemoteModelList::live(dedupe_remote_models(
         payload
             .data
             .into_iter()
@@ -158,7 +159,7 @@ pub(crate) async fn list_models(client: &AIClient) -> Result<Vec<RemoteModelInfo
                 display_name: None,
             })
             .collect(),
-    ))
+    )))
 }
 
 #[derive(Debug, Deserialize)]
@@ -179,6 +180,10 @@ struct CodexBackendModelEntry {
     /// We only surface entries the CLI itself shows (`list`).
     #[serde(default)]
     visibility: Option<String>,
+    /// `supported_in_api` marks API-key (platform) availability. BitFun uses
+    /// these models exclusively through the ChatGPT subscription backend, where
+    /// ChatGPT-only entries are valid, so it is intentionally not filtered on.
+    #[allow(dead_code)]
     #[serde(default)]
     supported_in_api: Option<bool>,
     #[serde(default)]
@@ -186,6 +191,12 @@ struct CodexBackendModelEntry {
 }
 
 const DEFAULT_CODEX_MODELS: &[&str] = &[
+    "gpt-6-astra",
+    "gpt-6-sol",
+    "gpt-6-luna",
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-5.6-luna",
     "gpt-5.5",
     "gpt-5.4-mini",
     "gpt-5.4",
@@ -208,13 +219,30 @@ const FORWARD_COMPAT_CODEX_MODELS: &[(&str, &[&str])] = &[
 ];
 
 fn codex_home_dir() -> PathBuf {
-    std::env::var("CODEX_HOME")
-        .ok()
+    codex_home_from_env(|key| std::env::var(key).ok())
+}
+
+/// Resolves the Codex home directory from environment lookups.
+///
+/// Normal Windows sessions do not set `HOME` (only `USERPROFILE`), so both are
+/// checked; otherwise the official client's `models_cache.json` under
+/// `~/.codex` would never be found on Windows.
+fn codex_home_from_env(get: impl Fn(&str) -> Option<String>) -> PathBuf {
+    if let Some(dir) = get("CODEX_HOME")
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".codex")))
-        .unwrap_or_else(|| PathBuf::from(".codex"))
+    {
+        return PathBuf::from(dir);
+    }
+    for key in ["HOME", "USERPROFILE"] {
+        if let Some(home) = get(key)
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+        {
+            return PathBuf::from(home).join(".codex");
+        }
+    }
+    PathBuf::from(".codex")
 }
 
 fn add_unique_model_id(ordered: &mut Vec<String>, id: String) {
@@ -298,9 +326,6 @@ fn read_codex_cached_models(codex_home: &Path) -> Vec<String> {
 fn codex_models_from_entries(entries: Vec<CodexBackendModelEntry>) -> Vec<String> {
     let mut sortable = Vec::new();
     for model in entries {
-        if model.supported_in_api == Some(false) {
-            continue;
-        }
         if model
             .visibility
             .as_deref()
@@ -368,7 +393,7 @@ fn codex_models_url(base_models_url: &str) -> String {
 async fn list_codex_chatgpt_models(
     client: &AIClient,
     base_models_url: &str,
-) -> Result<Vec<RemoteModelInfo>> {
+) -> Result<RemoteModelList> {
     let url = codex_models_url(base_models_url);
 
     let live_models = async {
@@ -382,25 +407,37 @@ async fn list_codex_chatgpt_models(
     }
     .await;
 
-    let mut model_ids = match live_models {
-        Ok(models) if !models.is_empty() => models,
+    let (mut model_ids, fallback_warning) = match live_models {
+        Ok(models) if !models.is_empty() => (models, None),
         Ok(_) => {
             log::warn!(
                 "Codex backend model discovery returned no models; using local fallback catalog"
             );
-            codex_fallback_model_ids()
+            (
+                codex_fallback_model_ids(),
+                Some(
+                    "codex backend model discovery returned no models; using local fallback catalog"
+                        .to_string(),
+                ),
+            )
         }
         Err(error) => {
             log::warn!(
                 "Codex backend model discovery failed: {}; using local fallback catalog",
                 error
             );
-            codex_fallback_model_ids()
+            (
+                codex_fallback_model_ids(),
+                Some(format!("codex backend model discovery failed: {error:#}")),
+            )
         }
     };
 
     add_forward_compat_codex_models(&mut model_ids);
-    Ok(codex_model_infos(model_ids))
+    Ok(RemoteModelList {
+        models: codex_model_infos(model_ids),
+        fallback_warning,
+    })
 }
 
 pub(crate) fn extract_tool_name(tool: &serde_json::Value) -> String {
@@ -464,8 +501,104 @@ pub(crate) fn convert_tools_flat(
 
 #[cfg(test)]
 mod tests {
-    use super::{attach_tools, is_known_codex_reasoning_model};
+    use super::{
+        attach_tools, codex_home_from_env, codex_models_from_entries,
+        is_known_codex_reasoning_model, read_codex_cached_models, CodexBackendModelEntry,
+    };
     use serde_json::json;
+
+    fn entry(
+        slug: &str,
+        visibility: Option<&str>,
+        supported_in_api: Option<bool>,
+    ) -> CodexBackendModelEntry {
+        CodexBackendModelEntry {
+            slug: slug.to_string(),
+            display_name: None,
+            visibility: visibility.map(str::to_string),
+            supported_in_api,
+            priority: None,
+        }
+    }
+
+    #[test]
+    fn codex_home_env_prefers_codex_home_then_home_then_userprofile() {
+        let resolved = codex_home_from_env(|key| match key {
+            "CODEX_HOME" => Some("D:/codex-home".to_string()),
+            "HOME" => Some("C:/users/u".to_string()),
+            "USERPROFILE" => Some("C:/users/other".to_string()),
+            _ => None,
+        });
+        assert_eq!(resolved, std::path::PathBuf::from("D:/codex-home"));
+
+        let home = codex_home_from_env(|key| match key {
+            "HOME" => Some("C:/users/u".to_string()),
+            "USERPROFILE" => Some("C:/users/other".to_string()),
+            _ => None,
+        });
+        assert_eq!(home, std::path::PathBuf::from("C:/users/u").join(".codex"));
+
+        // Normal Windows sessions only set USERPROFILE, not HOME.
+        let userprofile = codex_home_from_env(|key| match key {
+            "USERPROFILE" => Some("C:/users/u".to_string()),
+            _ => None,
+        });
+        assert_eq!(
+            userprofile,
+            std::path::PathBuf::from("C:/users/u").join(".codex")
+        );
+
+        let bare = codex_home_from_env(|_| None);
+        assert_eq!(bare, std::path::PathBuf::from(".codex"));
+    }
+
+    #[test]
+    fn codex_models_keep_chatgpt_only_entries_and_hide_internal_ones() {
+        let models = codex_models_from_entries(vec![
+            entry("gpt-6-luna", Some("list"), Some(true)),
+            entry("gpt-6-astra", Some("list"), Some(true)),
+            // ChatGPT-subscription-only models must stay listed.
+            entry("gpt-7-preview", Some("list"), Some(false)),
+            entry("codex-auto-review", Some("hide"), Some(true)),
+        ]);
+        assert_eq!(
+            models,
+            vec![
+                "gpt-6-astra".to_string(),
+                "gpt-6-luna".to_string(),
+                "gpt-7-preview".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn codex_cached_models_file_is_parsed_with_priority_order() {
+        let dir = std::env::temp_dir().join(format!(
+            "bitfun-codex-models-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp codex home");
+        let payload = json!({
+            "models": [
+                { "slug": "gpt-5.5", "display_name": "gpt-5.5", "supported_in_api": true, "visibility": "list", "priority": 12 },
+                { "slug": "gpt-6-astra", "display_name": "GPT-6 Astra", "supported_in_api": true, "visibility": "list", "priority": 1 },
+                { "slug": "codex-auto-review", "display_name": "review", "supported_in_api": true, "visibility": "hide", "priority": 43 }
+            ]
+        });
+        std::fs::write(dir.join("models_cache.json"), payload.to_string()).expect("write cache");
+
+        let models = read_codex_cached_models(&dir);
+
+        std::fs::remove_dir_all(&dir).expect("clean temp codex home");
+        assert_eq!(
+            models,
+            vec!["gpt-6-astra".to_string(), "gpt-5.5".to_string()]
+        );
+    }
 
     #[test]
     fn attach_tools_removes_tool_choice_without_tools() {
@@ -486,6 +619,10 @@ mod tests {
     fn codex_reasoning_model_table_is_exact_and_case_insensitive() {
         assert!(is_known_codex_reasoning_model("GPT-5.5"));
         assert!(is_known_codex_reasoning_model("gpt-5-codex"));
+        assert!(is_known_codex_reasoning_model("gpt-6-astra"));
+        assert!(is_known_codex_reasoning_model("gpt-6-sol"));
+        assert!(is_known_codex_reasoning_model("gpt-6-luna"));
+        assert!(is_known_codex_reasoning_model("gpt-5.6-terra"));
         assert!(!is_known_codex_reasoning_model("gpt-9-unknown"));
         assert!(!is_known_codex_reasoning_model("gpt-5.5-proxy"));
     }

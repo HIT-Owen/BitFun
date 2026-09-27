@@ -1327,11 +1327,11 @@ pub async fn test_ai_config_connection(
 pub async fn list_ai_models_by_config(
     state: State<'_, AppState>,
     request: ListAIModelsByConfigRequest,
-) -> Result<Vec<bitfun_core::util::types::RemoteModelInfo>, String> {
+) -> Result<bitfun_core::util::types::RemoteModelList, String> {
     let config_name = request.config.name.clone();
     let ai_client = create_transient_ai_client_for_config(&state, request.config).await?;
 
-    ai_client.list_models().await.map_err(|e| {
+    ai_client.list_models_detailed().await.map_err(|e| {
         error!(
             "Failed to list models for config: name={}, error={}",
             config_name, e

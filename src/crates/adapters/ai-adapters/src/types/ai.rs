@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub use bitfun_core_types::{ConnectionTestMessageCode, ConnectionTestResult, RemoteModelInfo};
+pub use bitfun_core_types::{
+    ConnectionTestMessageCode, ConnectionTestResult, RemoteModelInfo, RemoteModelList,
+};
 
 /// Gemini API response
 #[derive(Debug, Clone, Serialize, Deserialize)]
