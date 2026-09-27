@@ -580,7 +580,9 @@ $_section-header-height: 24px;
   }
 
   &__section-label {
-    font-size: var(--bf-appearance-token-font-size-2xs);
+    /* Match the sidebar top-action rows (代码会话 / 协作会话) so section
+       titles no longer read as oversized captions. */
+    font-size: var(--bf-appearance-token-font-size-sm);
     font-weight: 600;
     letter-spacing: 0.05em;
     text-transform: uppercase;
