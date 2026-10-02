@@ -737,6 +737,7 @@
     "boostStartBtw": "Start side question",
     "boostNewSession": "New session",
     "sideQuestionTooltip": "Start a quick side question (⌘/Ctrl+Alt+B)",
+    "newSessionFailed": "Failed to create session",
     "boostAddContext": "Reference file or folder",
     "boostSkills": "Skills",
     "modeSection": "Modes",
@@ -955,7 +956,8 @@
     "nestedDisabled": "A side question cannot start another side question",
     "error": "Failed",
     "close": "Close",
-    "noSession": "No active session for /btw"
+    "noSession": "No active session for /btw",
+    "startFailed": "Failed to start side question"
   },
   "childSession": {
     "stopReview": "Stop review",

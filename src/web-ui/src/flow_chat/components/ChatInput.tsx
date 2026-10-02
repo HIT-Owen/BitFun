@@ -103,6 +103,7 @@ import {
   sessionWorktreeBindingSubscriptionKey,
 } from '../utils/sessionWorktree';
 import { isRemoteWorkspaceSession, sessionProjectWorkspacePath } from '../utils/sessionWorkspace';
+import { isSessionInUseError } from '@/infrastructure/api/errors/TauriCommandError';
 import { isTauriRuntime } from '@/infrastructure/runtime';
 import { Tooltip, IconButton, confirmDanger, confirmWarning } from '@/component-library';
 import { PendingQueuePanel } from './PendingQueuePanel';
@@ -3145,6 +3146,25 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     }
   }, [contexts, derivedState, dispatchInput, externalPromptCommands, inputState.isActive, isAcpInputSession, prunePendingLargePastes, removeContext, resolveTypedMcpPromptCommand, selectedExternalPromptCandidateId, selectedNonExternalSlashCommand, setQueuedInput, slashCommandState.isActive, slashCommandState.kind, caps.localSlashCommands, caps.ops]);
 
+  // A composer action that cannot run must say why: these entry points used to
+  // fail silently, which reads as "the click did nothing".
+  const reportComposerActionFailure = useCallback(
+    (error: unknown, fallbackTitle: string) => {
+      if (isSessionInUseError(error)) {
+        notificationService.error(t('session.inUseMessage'), {
+          title: t('session.inUseTitle'),
+          duration: 5000,
+        });
+        return;
+      }
+      notificationService.error(
+        error instanceof Error ? error.message : t('error.unknown'),
+        { title: fallbackTitle, duration: 5000 }
+      );
+    },
+    [t]
+  );
+
   const submitBtwFromInput = useCallback(async () => {
     if (!derivedState) return;
     if (!currentSessionId) {
@@ -3221,8 +3241,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       dispatchInput({ type: 'ACTIVATE' });
       replacePendingLargePastes(originalPendingLargePastes);
       dispatchInput({ type: 'SET_VALUE', payload: originalMessage });
+      reportComposerActionFailure(e, t('btw.startFailed'));
     }
-  }, [clearPendingLargePastes, currentSessionId, derivedState, dispatchInput, expandComposerSpecialTokens, imageContexts, inputState.value, isBtwSession, removeContext, replacePendingLargePastes, sessionBoundWorkspacePath, setQueuedInput, t]);
+  }, [clearPendingLargePastes, currentSessionId, derivedState, dispatchInput, expandComposerSpecialTokens, imageContexts, inputState.value, isBtwSession, removeContext, replacePendingLargePastes, reportComposerActionFailure, sessionBoundWorkspacePath, setQueuedInput, t]);
 
   const submitCompactFromInput = useCallback(async () => {
     if (!effectiveTargetSessionId || !effectiveTargetSession) {
@@ -4711,9 +4732,10 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         );
       } catch (error) {
         log.error('Failed to create new session from composer action', { error });
+        reportComposerActionFailure(error, t('chatInput.newSessionFailed'));
       }
     },
-    [currentSessionId, workspace]
+    [currentSessionId, reportComposerActionFailure, t, workspace]
   );
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {

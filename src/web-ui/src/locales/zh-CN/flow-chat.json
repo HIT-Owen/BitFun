@@ -737,6 +737,7 @@
     "boostStartBtw": "发起侧问",
     "boostNewSession": "新建会话",
     "sideQuestionTooltip": "快速发起一个侧问（⌘/Ctrl+Alt+B）",
+    "newSessionFailed": "无法新建会话",
     "boostAddContext": "引用文件或文件夹",
     "boostSkills": "Skills",
     "modeSection": "模式",
@@ -955,7 +956,8 @@
     "nestedDisabled": "侧问会话中不能继续新建侧问",
     "error": "失败",
     "close": "关闭",
-    "noSession": "当前没有可用于 /btw 的会话"
+    "noSession": "当前没有可用于 /btw 的会话",
+    "startFailed": "无法发起侧问"
   },
   "childSession": {
     "stopReview": "中止审核",
