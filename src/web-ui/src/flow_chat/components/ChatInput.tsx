@@ -7,7 +7,7 @@ import React, { useRef, useCallback, useEffect, useReducer, useState, useMemo, u
 import { createPortal } from 'react-dom';
 import path from 'path-browserify';
 import { useTranslation } from 'react-i18next';
-import { ArrowUp, BotMessageSquare, Image, RotateCcw, Plus, X, Sparkles, Loader2, ChevronRight, Files, MessageSquarePlus, Star } from 'lucide-react';
+import { ArrowUp, BotMessageSquare, Image, RotateCcw, Plus, X, Sparkles, Loader2, ChevronRight, Files, MessageSquarePlus, SquarePen, Star } from 'lucide-react';
 import { ContextDropZone, useContextStore } from '../../shared/context-system';
 import { useActiveSessionState } from '@/flow_chat/hooks';
 import {
@@ -4672,6 +4672,12 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     window.setTimeout(() => richTextInputRef.current?.focus(), 0);
   }, [dispatchInput, getRichTextInlineTriggerController, inlineTriggerState.isActive, inputState.value, setQueuedInput]);
 
+  const sideQuestionDisabledReason = !currentSessionId
+    ? t('btw.noSession')
+    : isBtwSession
+      ? t('btw.nestedDisabled')
+      : null;
+
   const handleBoostStartBtw = useCallback(
     (e: React.SyntheticEvent) => {
       e.stopPropagation();
@@ -4704,7 +4710,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           sessionMode,
         );
       } catch (error) {
-        log.error('Failed to create new session from boost menu', { error });
+        log.error('Failed to create new session from composer action', { error });
       }
     },
     [currentSessionId, workspace]
@@ -6038,47 +6044,47 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                           </div>
                         )}
 
-                        {!!currentSessionId && !isBtwSession && (
-                          <>
-                            <div className="bitfun-chat-input__boost-section-divider" data-bf-component="chat-input" data-bf-part="boostDivider" aria-hidden />
-                            <div
-                              role="button"
-                              tabIndex={0}
-                              className="bitfun-chat-input__boost-context-row"
-                              data-bf-component="chat-input"
-                              data-bf-part="boostItem"
-                              data-bf-boost-item-kind="context"
-                              data-testid="chat-input-boost-start-btw"
-                              onClick={handleBoostStartBtw}
-                              onKeyDown={e => e.key === 'Enter' && handleBoostStartBtw(e)}
-                            >
-                              <MessageSquarePlus size={14} className="bitfun-chat-input__boost-context-icon" aria-hidden />
-                              <span>{t('chatInput.boostStartBtw')}</span>
-                            </div>
-                          </>
-                        )}
-
-                        {(!currentSessionId || isBtwSession) && (
-                          <div className="bitfun-chat-input__boost-section-divider" data-bf-component="chat-input" data-bf-part="boostDivider" aria-hidden />
-                        )}
-                        <div
-                          role="button"
-                          tabIndex={0}
-                          className="bitfun-chat-input__boost-context-row"
-                          data-bf-component="chat-input"
-                          data-bf-part="boostItem"
-                          data-bf-boost-item-kind="context"
-                          data-testid="chat-input-boost-new-session"
-                          onClick={handleBoostNewSession}
-                          onKeyDown={e => e.key === 'Enter' && handleBoostNewSession(e)}
-                        >
-                          <Plus size={14} className="bitfun-chat-input__boost-context-icon" aria-hidden />
-                          <span>{t('chatInput.boostNewSession')}</span>
-                        </div>
                       </div>
                     </div>,
                     getAppearanceOverlayHost(),
                   )}
+                </div>
+                <div className="bitfun-chat-input__session-actions" data-bf-component="chat-input" data-bf-part="sessionActions">
+                  {!isAcpTargetSession && (
+                    <span
+                      data-bf-component="chat-input"
+                      data-bf-part="sideQuestionButton"
+                      data-bf-state={sideQuestionDisabledReason ? 'disabled' : undefined}
+                    >
+                      <Tooltip content={sideQuestionDisabledReason ?? t('chatInput.sideQuestionTooltip')}>
+                        <IconButton
+                          className="bitfun-chat-input__session-action-btn"
+                          variant="ghost"
+                          size="xs"
+                          aria-label={t('chatInput.boostStartBtw')}
+                          aria-disabled={Boolean(sideQuestionDisabledReason)}
+                          data-testid="chat-input-boost-start-btw"
+                          onClick={handleBoostStartBtw}
+                        >
+                          <MessageSquarePlus size={14} strokeWidth={2.25} />
+                        </IconButton>
+                      </Tooltip>
+                    </span>
+                  )}
+                  <span data-bf-component="chat-input" data-bf-part="newSessionButton">
+                    <Tooltip content={t('chatInput.boostNewSession')}>
+                      <IconButton
+                        className="bitfun-chat-input__session-action-btn"
+                        variant="ghost"
+                        size="xs"
+                        aria-label={t('chatInput.boostNewSession')}
+                        data-testid="chat-input-boost-new-session"
+                        onClick={handleBoostNewSession}
+                      >
+                        <SquarePen size={14} strokeWidth={2.25} />
+                      </IconButton>
+                    </Tooltip>
+                  </span>
                 </div>
               </div>
               <div className="bitfun-chat-input__actions-right" data-bf-component="chat-input" data-bf-part="actionsRight">

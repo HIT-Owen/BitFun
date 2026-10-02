@@ -736,6 +736,7 @@
     "boostSectionContext": "Context",
     "boostStartBtw": "Start side question",
     "boostNewSession": "New session",
+    "sideQuestionTooltip": "Start a quick side question (⌘/Ctrl+Alt+B)",
     "boostAddContext": "Reference file or folder",
     "boostSkills": "Skills",
     "modeSection": "Modes",

@@ -736,6 +736,7 @@
     "boostSectionContext": "上下文",
     "boostStartBtw": "發起側問",
     "boostNewSession": "新建會話",
+    "sideQuestionTooltip": "快速發起一個側問（⌘/Ctrl+Alt+B）",
     "boostAddContext": "引用檔案或資料夾",
     "boostSkills": "Skills",
     "modeSection": "模式",
