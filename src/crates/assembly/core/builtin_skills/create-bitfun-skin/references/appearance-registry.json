@@ -1,9 +1,9 @@
 {
   "schema": "bitfun.appearance.registry",
   "schemaVersion": 1,
-  "generatedFrom": "71fbdbb26757c930eedfef5cfda55ca12e008ae1",
-  "generatedAt": "2026-08-06T15:48:31.702263+00:00",
-  "sourceRevision": "71fbdbb26757c930eedfef5cfda55ca12e008ae1",
+  "generatedFrom": "fd2d67de25ad29a68eb12230e63ab8f20c8ca76b",
+  "generatedAt": "2026-10-02T15:22:10.045837+00:00",
+  "sourceRevision": "fd2d67de25ad29a68eb12230e63ab8f20c8ca76b",
   "sourceDirty": false,
   "sourceTreeHash": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
   "components": [
@@ -2260,6 +2260,10 @@
           "propertyProfile": "container"
         },
         {
+          "id": "commandStatus",
+          "propertyProfile": "container"
+        },
+        {
           "id": "commandSection",
           "propertyProfile": "container"
         },
@@ -2345,6 +2349,18 @@
         },
         {
           "id": "boostSubmenuManage",
+          "propertyProfile": "container"
+        },
+        {
+          "id": "sessionActions",
+          "propertyProfile": "container"
+        },
+        {
+          "id": "sideQuestionButton",
+          "propertyProfile": "container"
+        },
+        {
+          "id": "newSessionButton",
           "propertyProfile": "container"
         },
         {
@@ -5545,6 +5561,14 @@
           "propertyProfile": "container"
         },
         {
+          "id": "marketBrowse",
+          "propertyProfile": "container"
+        },
+        {
+          "id": "marketResults",
+          "propertyProfile": "container"
+        },
+        {
           "id": "marketGrid",
           "propertyProfile": "container"
         },
@@ -5667,6 +5691,13 @@
           "selector": {
             "kind": "self",
             "suffix": "[data-bf-state~=\"disabled\"]"
+          }
+        },
+        {
+          "id": "loading",
+          "selector": {
+            "kind": "self",
+            "suffix": "[data-bf-state~=\"loading\"]"
           }
         }
       ]
@@ -8504,18 +8535,6 @@
           "visualRole": "popup"
         },
         {
-          "id": "bottomBar",
-          "propertyProfile": "container",
-          "visualRole": "toolbar",
-          "continuityGroup": "nav-panel"
-        },
-        {
-          "id": "miniAppFooter",
-          "propertyProfile": "container",
-          "visualRole": "toolbar",
-          "continuityGroup": "nav-panel"
-        },
-        {
           "id": "footer",
           "propertyProfile": "container",
           "visualRole": "toolbar",
@@ -10024,6 +10043,10 @@
           "propertyProfile": "container"
         },
         {
+          "id": "unavailableWarning",
+          "propertyProfile": "container"
+        },
+        {
           "id": "generated",
           "propertyProfile": "container"
         },
@@ -10197,6 +10220,26 @@
         {
           "id": "ecosystemState",
           "propertyProfile": "container"
+        },
+        {
+          "id": "application",
+          "propertyProfile": "container"
+        },
+        {
+          "id": "appAttention",
+          "propertyProfile": "container"
+        },
+        {
+          "id": "applicationToggle",
+          "propertyProfile": "container"
+        },
+        {
+          "id": "hooksSection",
+          "propertyProfile": "container"
+        },
+        {
+          "id": "hooksSummary",
+          "propertyProfile": "container"
         }
       ],
       "facets": [],
@@ -10259,6 +10302,14 @@
         },
         {
           "id": "remoteList",
+          "propertyProfile": "container"
+        },
+        {
+          "id": "hiddenRemoteList",
+          "propertyProfile": "container"
+        },
+        {
+          "id": "hiddenRemoteRow",
           "propertyProfile": "container"
         },
         {
@@ -11215,6 +11266,11 @@
           "id": "item",
           "propertyProfile": "control",
           "visualRole": "control"
+        },
+        {
+          "id": "itemUnseen",
+          "propertyProfile": "paint",
+          "visualRole": "decoration"
         },
         {
           "id": "highlight",
@@ -12969,7 +13025,19 @@
           "propertyProfile": "container"
         },
         {
+          "id": "permissionOptionRow",
+          "propertyProfile": "container"
+        },
+        {
           "id": "permissionOption",
+          "propertyProfile": "container"
+        },
+        {
+          "id": "permissionOptionTrailing",
+          "propertyProfile": "container"
+        },
+        {
+          "id": "permissionOptionNextTurn",
           "propertyProfile": "container"
         },
         {
@@ -12991,6 +13059,13 @@
           "selector": {
             "kind": "self",
             "suffix": "[data-bf-state~=\"selected\"]"
+          }
+        },
+        {
+          "id": "armed",
+          "selector": {
+            "kind": "self",
+            "suffix": "[data-bf-state~=\"armed\"]"
           }
         }
       ]
@@ -13685,6 +13760,10 @@
         },
         {
           "id": "embeddingModel",
+          "propertyProfile": "container"
+        },
+        {
+          "id": "contextCompressionModel",
           "propertyProfile": "container"
         }
       ],
@@ -17300,7 +17379,8 @@
           "attribute": "data-bf-view",
           "values": [
             "list",
-            "report"
+            "report",
+            "stats"
           ]
         }
       ],
@@ -18137,7 +18217,10 @@
     "--bf-appearance-token-flowchat-link-hover-color",
     "--bf-appearance-token-flowchat-support-line-height",
     "--bf-appearance-token-flowchat-text-line-height",
+    "--bf-appearance-token-flowchat-thinking-text-color",
+    "--bf-appearance-token-flowchat-tool-text-color",
     "--bf-appearance-token-flowchat-turn-gap",
+    "--bf-appearance-token-flowchat-user-text-color",
     "--bf-appearance-token-font-family-mono",
     "--bf-appearance-token-font-family-sans",
     "--bf-appearance-token-font-size-2xl",
