@@ -677,7 +677,7 @@
     :root[data-bf-appearance-mode="light"] &--capsule,
     .light &--capsule {
       background: rgba(var(--bf-appearance-token-color-static-white-rgb), 0.28);
-      border: 1px solid var(--bf-appearance-token-color-overlay-black-08);
+      border: 1px solid var(--bf-appearance-token-border-base);
       backdrop-filter: blur(8px);
       -webkit-backdrop-filter: blur(8px);
       box-shadow:
@@ -710,6 +710,13 @@
         0 12px 32px rgba(var(--bf-appearance-token-color-static-black-rgb), 0.45),
         inset 0 1px 0 var(--bf-appearance-token-color-overlay-white-12),
         inset 0 -1px 0 var(--bf-appearance-token-color-overlay-white-04);
+    }
+
+    // Light chrome sits on a near-white page, so a dark hairline is the only
+    // thing separating the composer surface from the background.
+    :root[data-bf-appearance-mode="light"] &,
+    .light & {
+      border-color: var(--bf-appearance-token-border-base);
     }
 
     & > * {
