@@ -77,7 +77,7 @@
     {
       "root": "src/web-ui/src",
       "domain": "appearanceProjection",
-      "key": "#b4a0fc <-> #b39dff",
+      "key": "#b39dff <-> #b4a0fc",
       "decision": "keep",
       "owner": "src/web-ui/src/infrastructure/appearance/builtins/buildBuiltinAppearance.ts",
       "reason": "Both are flow chat user-voice text colors for the Dark and Midnight appearances. Each is a lifted variant of its own palette purple (#8b5cf6 and #9c78ff) so the dark family shares a consistent 'user voice = purple' language; the two themes never render side by side.",
@@ -95,7 +95,7 @@
     {
       "root": "src/web-ui/src",
       "domain": "appearanceProjection",
-      "key": "#8fa8bd <-> #87a9be",
+      "key": "#87a9be <-> #8fa8bd",
       "decision": "keep",
       "owner": "src/web-ui/src/infrastructure/appearance/builtins/buildBuiltinAppearance.ts",
       "reason": "Both are flow chat model-thinking text colors (Slate and Midnight) drawn from the same cool cyan-gray family so the thinking voice stays consistent across dark themes; they never render side by side.",

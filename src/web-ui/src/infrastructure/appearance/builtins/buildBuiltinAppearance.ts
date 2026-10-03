@@ -1,4 +1,4 @@
-import type { AppearancePalette } from './AppearancePalette';
+import type { AppearancePalette, AppearancePaletteMode } from './AppearancePalette';
 import type {
   AppearanceColorValue,
   AppearanceDurationValue,
@@ -146,6 +146,51 @@ const FLOWCHAT_TOOL_TEXT_COLOR: Record<string, string> = {
   'bitfun-tokyo-night': '#8bb89a',
 };
 
+/**
+ * Session input (chat composer) control identity colors, per appearance mode.
+ * Every interactive control in the composer owns one hue so the action row
+ * reads as a set of distinct functions instead of uniform gray chrome. Light
+ * mode uses deep saturated hues on light surfaces; dark mode uses lifted hues
+ * on dark surfaces. Values stay clear of the permission risk ramp
+ * (success/warning/error) so safety state never collides with an ordinary
+ * control, and the primary action (send) intentionally shares the model blue
+ * as the single "primary" identity.
+ */
+const CONTROL_IDENTITY_COLORS: Record<AppearancePaletteMode, {
+  mode: string;
+  model: string;
+  reasoning: string;
+  git: string;
+  dispatch: string;
+  goal: string;
+  usage: string;
+  send: string;
+  stop: string;
+}> = {
+  light: {
+    mode: '#6d28d9',
+    model: '#1d4ed8',
+    reasoning: '#4338ca',
+    git: '#0f766e',
+    dispatch: '#0369a1',
+    goal: '#a21caf',
+    usage: '#0e7490',
+    send: '#1d4ed8',
+    stop: '#dc2626',
+  },
+  dark: {
+    mode: '#a78bfa',
+    model: '#60a5fa',
+    reasoning: '#818cf8',
+    git: '#2dd4bf',
+    dispatch: '#38bdf8',
+    goal: '#e879f9',
+    usage: '#22d3ee',
+    send: '#60a5fa',
+    stop: '#f87171',
+  },
+};
+
 function createCssTokens(palette: AppearancePalette): Record<string, string> {
   const { colors, effects, motion, typography } = palette;
   const purple = colors.purple ?? {
@@ -154,6 +199,7 @@ function createCssTokens(palette: AppearancePalette): Record<string, string> {
     500: colors.accent[500],
     600: colors.accent[600],
   };
+  const controlIdentity = CONTROL_IDENTITY_COLORS[palette.type];
   const tokens: Record<string, string> = {
     '--bf-appearance-token-color-bg-primary': colors.background.primary,
     '--bf-appearance-token-color-bg-secondary': colors.background.secondary,
@@ -266,6 +312,15 @@ function createCssTokens(palette: AppearancePalette): Record<string, string> {
     '--bf-appearance-token-domain-review-judge': purple[500],
     '--bf-appearance-token-domain-teal-action': '#14b8a6',
     '--bf-appearance-token-domain-todo': '#14b8a6',
+    '--bf-appearance-token-control-mode': controlIdentity.mode,
+    '--bf-appearance-token-control-model': controlIdentity.model,
+    '--bf-appearance-token-control-reasoning': controlIdentity.reasoning,
+    '--bf-appearance-token-control-git': controlIdentity.git,
+    '--bf-appearance-token-control-dispatch': controlIdentity.dispatch,
+    '--bf-appearance-token-control-goal': controlIdentity.goal,
+    '--bf-appearance-token-control-usage': controlIdentity.usage,
+    '--bf-appearance-token-control-send': controlIdentity.send,
+    '--bf-appearance-token-control-stop': controlIdentity.stop,
     '--bf-appearance-token-domain-git-lane-0': colors.accent[600],
     '--bf-appearance-token-domain-git-lane-1': colors.semantic.success,
     '--bf-appearance-token-domain-git-lane-2': colors.semantic.warning,

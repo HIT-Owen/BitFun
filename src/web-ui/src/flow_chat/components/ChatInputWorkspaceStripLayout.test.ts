@@ -27,8 +27,8 @@ describe('ChatInputWorkspaceStrip layout styles', () => {
     expect(stylesheet).toContain('min-width: 16px;');
     expect(stylesheet).toContain('width: 14px;');
     expect(stylesheet).toContain('height: 14px;');
-    expect(stylesheet).toContain('color: color-mix(in srgb, var(--bf-appearance-token-color-accent-500) 62%, var(--bf-appearance-token-color-text-secondary));');
-    expect(stylesheet).toContain('color: color-mix(in srgb, var(--bf-appearance-token-color-accent-500) 86%, var(--bf-appearance-token-color-text-primary));');
+    expect(stylesheet).toContain('color: color-mix(in srgb, var(--bf-appearance-token-control-usage) 78%, var(--bf-appearance-token-color-text-secondary));');
+    expect(stylesheet).toContain('color: var(--bf-appearance-token-control-usage);');
   });
 
   it('keeps the permission control compact and collapses labels on narrow screens', () => {

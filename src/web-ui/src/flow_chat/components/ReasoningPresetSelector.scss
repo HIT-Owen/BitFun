@@ -15,7 +15,7 @@
     border: none;
     border-radius: 10px;
     background: transparent;
-    color: var(--bf-appearance-token-color-text-secondary);
+    color: var(--bf-appearance-token-control-reasoning);
     font-size: var(--bf-appearance-token-flowchat-font-size-2xs);
     cursor: pointer;
     opacity: 0.72;
@@ -25,17 +25,17 @@
     &:hover,
     &:focus-visible,
     &--open {
-      color: var(--bf-appearance-token-color-text-primary);
+      color: var(--bf-appearance-token-control-reasoning);
       opacity: 1;
     }
 
     &:hover,
     &--open {
-      background: var(--bf-appearance-token-element-bg-medium);
+      background: color-mix(in srgb, var(--bf-appearance-token-control-reasoning) 14%, transparent);
     }
 
     &:focus-visible {
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--bf-appearance-token-color-accent-500) 20%, transparent);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--bf-appearance-token-control-reasoning) 20%, transparent);
     }
 
     &:disabled {

@@ -324,10 +324,10 @@
       "max": 0
     },
     "colorDomainScopes.appearanceProjection.occurrences": {
-      "max": 148
+      "max": 166
     },
     "colorDomainScopes.appearanceProjection.uniqueColors": {
-      "max": 105
+      "max": 120
     },
     "colorDomainScopes.appearanceDomain.occurrences": {
       "max": 0

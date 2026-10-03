@@ -16,10 +16,10 @@
     height: 18px;
     padding: 0 5px;
     overflow: hidden;
-    border: 1px solid color-mix(in srgb, var(--bf-appearance-token-color-accent-500) 28%, transparent);
+    border: 1px solid color-mix(in srgb, var(--bf-appearance-token-control-dispatch) 32%, transparent);
     border-radius: $size-radius-sm;
-    background: color-mix(in srgb, var(--bf-appearance-token-color-accent-500) 7%, transparent);
-    color: var(--bf-appearance-token-color-text-secondary);
+    background: color-mix(in srgb, var(--bf-appearance-token-control-dispatch) 8%, transparent);
+    color: var(--bf-appearance-token-control-dispatch);
     font: inherit;
     font-size: var(--bf-appearance-token-flowchat-font-size-xxs);
     line-height: 1;
@@ -32,13 +32,13 @@
 
     &:hover:not(:disabled),
     &[aria-expanded='true'] {
-      border-color: color-mix(in srgb, var(--bf-appearance-token-color-accent-500) 52%, transparent);
-      background: color-mix(in srgb, var(--bf-appearance-token-color-accent-500) 12%, transparent);
-      color: var(--bf-appearance-token-color-text-primary);
+      border-color: color-mix(in srgb, var(--bf-appearance-token-control-dispatch) 56%, transparent);
+      background: color-mix(in srgb, var(--bf-appearance-token-control-dispatch) 14%, transparent);
+      color: var(--bf-appearance-token-control-dispatch);
     }
 
     &:focus-visible {
-      outline: 2px solid var(--bf-appearance-token-color-accent-500);
+      outline: 2px solid var(--bf-appearance-token-control-dispatch);
       outline-offset: 1px;
     }
 

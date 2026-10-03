@@ -514,26 +514,26 @@
   }
 
   &__goal-btn--none.icon-btn {
-    color: var(--bf-appearance-token-color-text-muted);
+    color: color-mix(in srgb, var(--bf-appearance-token-control-goal) 70%, var(--bf-appearance-token-color-text-muted));
     opacity: 0.72;
 
     &:hover:not(:disabled) {
       transform: none;
       border-radius: 50%;
-      background: color-mix(in srgb, var(--bf-appearance-token-color-text-muted) 12%, var(--bf-appearance-token-element-bg-medium));
-      color: var(--bf-appearance-token-color-text-secondary);
+      background: color-mix(in srgb, var(--bf-appearance-token-control-goal) 12%, var(--bf-appearance-token-element-bg-medium));
+      color: var(--bf-appearance-token-control-goal);
       opacity: 1;
     }
   }
 
   &__goal-btn--active.icon-btn {
-    color: var(--bf-appearance-token-color-warning);
+    color: var(--bf-appearance-token-control-goal);
 
     &:hover:not(:disabled) {
       transform: none;
       border-radius: 50%;
-      background: color-mix(in srgb, var(--bf-appearance-token-color-warning) 12%, var(--bf-appearance-token-element-bg-medium));
-      color: var(--bf-appearance-token-color-warning);
+      background: color-mix(in srgb, var(--bf-appearance-token-control-goal) 12%, var(--bf-appearance-token-element-bg-medium));
+      color: var(--bf-appearance-token-control-goal);
       opacity: 1;
     }
   }
@@ -557,13 +557,13 @@
     min-width: 16px;
     border-radius: 50%;
     opacity: 0.86;
-    color: color-mix(in srgb, var(--bf-appearance-token-color-accent-500) 62%, var(--bf-appearance-token-color-text-secondary));
+    color: color-mix(in srgb, var(--bf-appearance-token-control-usage) 78%, var(--bf-appearance-token-color-text-secondary));
 
     &:hover:not(:disabled) {
       transform: none;
       border-radius: 50%;
-      background: color-mix(in srgb, var(--bf-appearance-token-color-accent-500) 10%, var(--bf-appearance-token-element-bg-medium));
-      color: color-mix(in srgb, var(--bf-appearance-token-color-accent-500) 86%, var(--bf-appearance-token-color-text-primary));
+      background: color-mix(in srgb, var(--bf-appearance-token-control-usage) 10%, var(--bf-appearance-token-element-bg-medium));
+      color: var(--bf-appearance-token-control-usage);
       opacity: 1;
     }
 
@@ -611,9 +611,9 @@
       flex: none;
       gap: 4px;
       margin-left: 4px;
-      border: 1px solid var(--bf-appearance-token-border-subtle);
+      border: 1px solid color-mix(in srgb, var(--bf-appearance-token-control-git) 34%, transparent);
       background: transparent;
-      color: var(--bf-appearance-token-color-text-muted);
+      color: var(--bf-appearance-token-control-git);
       font: inherit;
       font-size: var(--bf-appearance-token-flowchat-font-size-xxs);
       line-height: 1;
@@ -621,8 +621,8 @@
       cursor: pointer;
 
       &:hover:not(:disabled) {
-        background: var(--bf-appearance-token-element-bg-medium);
-        color: var(--bf-appearance-token-color-text-secondary);
+        background: color-mix(in srgb, var(--bf-appearance-token-control-git) 12%, transparent);
+        color: var(--bf-appearance-token-control-git);
       }
 
       &:focus-visible {
@@ -637,11 +637,11 @@
     }
 
     &--worktree-on {
-      border-color: var(--bf-appearance-token-color-accent-500);
-      color: var(--bf-appearance-token-color-accent-500);
+      border-color: var(--bf-appearance-token-control-git);
+      color: var(--bf-appearance-token-control-git);
 
       &:hover:not(:disabled) {
-        color: var(--bf-appearance-token-color-accent-500);
+        color: var(--bf-appearance-token-control-git);
       }
     }
   }
@@ -685,7 +685,7 @@
     flex-shrink: 0;
     width: 11px;
     height: 11px;
-    color: var(--bf-appearance-token-color-text-muted);
+    color: var(--bf-appearance-token-control-git);
     opacity: 0.9;
   }
 
@@ -698,7 +698,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     padding-bottom: 1px;
-    color: var(--bf-appearance-token-color-text-primary);
+    color: var(--bf-appearance-token-control-git);
   }
 
   &__sep {

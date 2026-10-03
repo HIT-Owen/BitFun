@@ -951,6 +951,18 @@
     }
   }
 
+  // The mode selector trigger owns the mode hue; other composer actions stay
+  // neutral so the row keeps a single clear "mode" affordance.
+  &__agent-boost-add {
+    color: var(--bf-appearance-token-control-mode) !important;
+
+    &:hover,
+    .bitfun-chat-input__box:focus-within & {
+      color: var(--bf-appearance-token-control-mode) !important;
+      background: color-mix(in srgb, var(--bf-appearance-token-control-mode) 16%, transparent) !important;
+    }
+  }
+
   // Unavailable composer actions stay hoverable so their tooltip can explain
   // why (no session / nested side question), matching the menu's aria-disabled
   // pattern instead of a native disabled button that swallows hover events.
@@ -987,6 +999,14 @@
       background: rgba(var(--private-chat-input-agent-debug-bg-rgb), 0.2);
       color: rgba(var(--private-chat-input-agent-debug-text-rgb), 0.98);
     }
+  }
+
+  // The default (agent) mode capsule carries the mode identity hue so the active
+  // collaboration mode reads as a distinct function; Plan/Debug keep their own
+  // semantic tints above.
+  &__agent-capsule:not(.bitfun-chat-input__agent-capsule--Plan):not(.bitfun-chat-input__agent-capsule--debug) {
+    color: var(--bf-appearance-token-control-mode);
+    background: color-mix(in srgb, var(--bf-appearance-token-control-mode) 13%, transparent);
   }
 
   &__agent-capsule-label {
@@ -1902,7 +1922,7 @@
     flex-shrink: 0;
 
     &:not(:disabled) {
-      background: rgba(var(--private-chat-input-send-surface-rgb), 0.96);
+      background: var(--bf-appearance-token-control-send);
       border: 1px solid transparent;
       color: rgb(var(--private-chat-input-send-dark-icon-rgb));
       box-shadow: none;
@@ -1911,11 +1931,7 @@
     &:hover:not(:disabled) {
       transform: scale(1.07);
       filter: none;
-      background: linear-gradient(
-        165deg,
-        var(--bf-appearance-token-color-static-white) 0%,
-        rgba(var(--private-chat-input-send-surface-hover-rgb), 0.99) 100%
-      );
+      background: color-mix(in srgb, var(--bf-appearance-token-control-send) 86%, var(--bf-appearance-token-color-static-white));
       border-color: rgba(var(--bf-appearance-token-color-static-white-rgb), 0.52);
       color: rgb(var(--private-chat-input-send-dark-icon-strong-rgb));
       box-shadow:
@@ -1926,11 +1942,7 @@
     .bitfun-chat-input__box:focus-within &:not(:disabled) {
       filter: none;
       transform: scale(1.05);
-      background: linear-gradient(
-        165deg,
-        rgba(var(--private-chat-input-send-surface-focus-start-rgb), 0.99) 0%,
-        rgba(var(--private-chat-input-send-surface-focus-end-rgb), 0.97) 100%
-      );
+      background: color-mix(in srgb, var(--bf-appearance-token-control-send) 90%, var(--bf-appearance-token-color-static-white));
       border-color: var(--bf-appearance-token-border-prominent);
       box-shadow:
         0 0 0 1px rgba(var(--bf-appearance-token-color-static-black-rgb), 0.36),
@@ -1986,11 +1998,7 @@
       &:hover .bitfun-chat-input__breathing-circle {
         transform: scale(1.07);
         filter: none;
-        background: linear-gradient(
-          165deg,
-          var(--bf-appearance-token-color-static-white) 0%,
-          rgba(var(--private-chat-input-send-surface-hover-rgb), 0.99) 100%
-        );
+        background: color-mix(in srgb, var(--bf-appearance-token-control-stop) 86%, var(--bf-appearance-token-color-static-white));
         border-color: rgba(var(--bf-appearance-token-color-static-white-rgb), 0.52);
         box-shadow:
           0 0 0 1px rgba(var(--bf-appearance-token-color-static-black-rgb), 0.32),
@@ -2028,7 +2036,7 @@
     transition:
       transform 120ms cubic-bezier(0.23, 1, 0.32, 1),
       opacity 120ms ease;
-    background: rgba(var(--private-chat-input-send-surface-rgb), 0.96);
+    background: var(--bf-appearance-token-control-stop);
     border: 1px solid transparent;
     box-shadow: none;
 
@@ -2050,11 +2058,7 @@
   .light & {
     .bitfun-chat-input__send-button:not(.bitfun-chat-input__send-button--breathing) {
       &:not(:disabled) {
-        background: linear-gradient(
-          165deg,
-          rgb(var(--private-chat-input-send-inverse-surface-start-rgb)) 0%,
-          rgb(var(--private-chat-input-send-inverse-surface-end-rgb)) 100%
-        );
+        background: var(--bf-appearance-token-control-send);
         border: 1px solid transparent;
         color: rgb(var(--private-chat-input-send-inverse-text-rgb));
         box-shadow: none;
@@ -2063,11 +2067,7 @@
       &:hover:not(:disabled) {
         filter: none;
         transform: scale(1.07);
-        background: linear-gradient(
-          165deg,
-          rgb(var(--private-chat-input-send-inverse-hover-start-rgb)) 0%,
-          rgb(var(--private-chat-input-send-inverse-hover-end-rgb)) 100%
-        );
+        background: color-mix(in srgb, var(--bf-appearance-token-control-send) 86%, var(--bf-appearance-token-color-static-white));
         border-color: rgba(var(--bf-appearance-token-color-static-black-rgb), 0.58);
         color: rgb(var(--private-chat-input-send-inverse-hover-text-rgb));
         box-shadow:
@@ -2078,11 +2078,7 @@
       .bitfun-chat-input__box:focus-within &:not(:disabled) {
         filter: none;
         transform: scale(1.05);
-        background: linear-gradient(
-          165deg,
-          rgb(var(--private-chat-input-send-inverse-focus-start-rgb)) 0%,
-          rgb(var(--private-chat-input-send-inverse-focus-end-rgb)) 100%
-        );
+        background: color-mix(in srgb, var(--bf-appearance-token-control-send) 90%, var(--bf-appearance-token-color-static-white));
         border-color: rgba(var(--bf-appearance-token-color-static-black-rgb), 0.52);
         color: rgb(var(--private-chat-input-send-inverse-focus-text-rgb));
         box-shadow:
@@ -2100,11 +2096,7 @@
     }
 
     .bitfun-chat-input__breathing-circle {
-      background: linear-gradient(
-        165deg,
-        rgb(var(--private-chat-input-send-inverse-surface-start-rgb)) 0%,
-        rgb(var(--private-chat-input-send-inverse-surface-end-rgb)) 100%
-      );
+      background: var(--bf-appearance-token-control-stop);
       border: 1px solid transparent;
       box-shadow: none;
 
@@ -2123,11 +2115,7 @@
 
     .bitfun-chat-input__send-button--breathing:hover .bitfun-chat-input__breathing-circle {
       transform: scale(1.07);
-      background: linear-gradient(
-        165deg,
-        rgb(var(--private-chat-input-stop-inverse-hover-start-rgb)) 0%,
-        rgb(var(--private-chat-input-stop-inverse-hover-end-rgb)) 100%
-      );
+      background: color-mix(in srgb, var(--bf-appearance-token-control-stop) 86%, var(--bf-appearance-token-color-static-white));
       border-color: rgba(var(--bf-appearance-token-color-static-black-rgb), 0.55);
       box-shadow:
         0 0 0 1px var(--bf-appearance-token-color-overlay-black-15),

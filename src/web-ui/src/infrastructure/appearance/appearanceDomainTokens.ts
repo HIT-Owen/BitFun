@@ -40,6 +40,17 @@ export const APPEARANCE_DOMAIN_TOKENS = {
   },
   tealAction: appearanceToken('domain-teal-action'),
   todo: appearanceToken('domain-todo'),
+  controlIdentity: {
+    mode: appearanceToken('control-mode'),
+    model: appearanceToken('control-model'),
+    reasoning: appearanceToken('control-reasoning'),
+    git: appearanceToken('control-git'),
+    dispatch: appearanceToken('control-dispatch'),
+    goal: appearanceToken('control-goal'),
+    usage: appearanceToken('control-usage'),
+    send: appearanceToken('control-send'),
+    stop: appearanceToken('control-stop'),
+  },
   textStroke: Array.from({ length: 5 }, (_, index) => appearanceToken(`domain-text-stroke-${index}`)),
   inspectorOverlay: {
     activeBorder: appearanceToken('domain-inspector-active-border'),
