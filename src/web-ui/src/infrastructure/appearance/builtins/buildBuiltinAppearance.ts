@@ -149,17 +149,22 @@ const FLOWCHAT_TOOL_TEXT_COLOR: Record<string, string> = {
 /**
  * Session input (chat composer) control identity colors, per appearance mode.
  * Every interactive control in the composer owns one hue so the action row
- * reads as a set of distinct functions instead of uniform gray chrome. Light
- * mode uses deep saturated hues on light surfaces; dark mode uses lifted hues
- * on dark surfaces. Values stay clear of the permission risk ramp
- * (success/warning/error) so safety state never collides with an ordinary
- * control, and the primary action (send) intentionally shares the model blue
- * as the single "primary" identity.
+ * reads as a set of distinct functions instead of uniform gray chrome. Hues are
+ * spread across the wheel (violet, blue, pink, emerald, orange, cyan, lime,
+ * sky, gold, teal) rather than staying in one cool family, so adjacent controls
+ * stay separable at a glance. Light mode uses deep saturated hues on light
+ * surfaces; dark mode uses lifted hues on dark surfaces. The permission risk
+ * ramp (success/warning/error) is reserved for safety state and the primary
+ * action (send) intentionally shares the model blue as the single "primary"
+ * identity.
  */
 const CONTROL_IDENTITY_COLORS: Record<AppearancePaletteMode, {
   mode: string;
+  newSession: string;
+  sideQuestion: string;
   model: string;
   reasoning: string;
+  workspace: string;
   git: string;
   dispatch: string;
   goal: string;
@@ -168,24 +173,30 @@ const CONTROL_IDENTITY_COLORS: Record<AppearancePaletteMode, {
   stop: string;
 }> = {
   light: {
-    mode: '#6d28d9',
-    model: '#1d4ed8',
-    reasoning: '#4338ca',
-    git: '#0f766e',
-    dispatch: '#0369a1',
-    goal: '#a21caf',
-    usage: '#0e7490',
-    send: '#1d4ed8',
+    mode: '#7c3aed',
+    newSession: '#059669',
+    sideQuestion: '#ea580c',
+    model: '#2563eb',
+    reasoning: '#db2777',
+    workspace: '#0891b2',
+    git: '#65a30d',
+    dispatch: '#0284c7',
+    goal: '#ca8a04',
+    usage: '#0d9488',
+    send: '#2563eb',
     stop: '#dc2626',
   },
   dark: {
     mode: '#a78bfa',
+    newSession: '#34d399',
+    sideQuestion: '#fb923c',
     model: '#60a5fa',
-    reasoning: '#818cf8',
-    git: '#2dd4bf',
+    reasoning: '#f472b6',
+    workspace: '#22d3ee',
+    git: '#a3e635',
     dispatch: '#38bdf8',
-    goal: '#e879f9',
-    usage: '#22d3ee',
+    goal: '#fbbf24',
+    usage: '#2dd4bf',
     send: '#60a5fa',
     stop: '#f87171',
   },
@@ -313,8 +324,11 @@ function createCssTokens(palette: AppearancePalette): Record<string, string> {
     '--bf-appearance-token-domain-teal-action': '#14b8a6',
     '--bf-appearance-token-domain-todo': '#14b8a6',
     '--bf-appearance-token-control-mode': controlIdentity.mode,
+    '--bf-appearance-token-control-new-session': controlIdentity.newSession,
+    '--bf-appearance-token-control-side-question': controlIdentity.sideQuestion,
     '--bf-appearance-token-control-model': controlIdentity.model,
     '--bf-appearance-token-control-reasoning': controlIdentity.reasoning,
+    '--bf-appearance-token-control-workspace': controlIdentity.workspace,
     '--bf-appearance-token-control-git': controlIdentity.git,
     '--bf-appearance-token-control-dispatch': controlIdentity.dispatch,
     '--bf-appearance-token-control-goal': controlIdentity.goal,

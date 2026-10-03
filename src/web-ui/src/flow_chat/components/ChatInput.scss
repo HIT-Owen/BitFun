@@ -963,6 +963,29 @@
     }
   }
 
+  // New-session and side-question actions each own a hue so they read as
+  // distinct functions beside the mode trigger; a disabled side question keeps
+  // its neutral faded treatment.
+  [data-bf-part="newSessionButton"] .bitfun-chat-input__session-action-btn:not([aria-disabled='true']) {
+    color: var(--bf-appearance-token-control-new-session) !important;
+
+    &:hover,
+    .bitfun-chat-input__box:focus-within & {
+      color: var(--bf-appearance-token-control-new-session) !important;
+      background: color-mix(in srgb, var(--bf-appearance-token-control-new-session) 16%, transparent) !important;
+    }
+  }
+
+  [data-bf-part="sideQuestionButton"] .bitfun-chat-input__session-action-btn:not([aria-disabled='true']) {
+    color: var(--bf-appearance-token-control-side-question) !important;
+
+    &:hover,
+    .bitfun-chat-input__box:focus-within & {
+      color: var(--bf-appearance-token-control-side-question) !important;
+      background: color-mix(in srgb, var(--bf-appearance-token-control-side-question) 16%, transparent) !important;
+    }
+  }
+
   // Unavailable composer actions stay hoverable so their tooltip can explain
   // why (no session / nested side question), matching the menu's aria-disabled
   // pattern instead of a native disabled button that swallows hover events.

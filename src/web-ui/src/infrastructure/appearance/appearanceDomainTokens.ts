@@ -42,8 +42,11 @@ export const APPEARANCE_DOMAIN_TOKENS = {
   todo: appearanceToken('domain-todo'),
   controlIdentity: {
     mode: appearanceToken('control-mode'),
+    newSession: appearanceToken('control-new-session'),
+    sideQuestion: appearanceToken('control-side-question'),
     model: appearanceToken('control-model'),
     reasoning: appearanceToken('control-reasoning'),
+    workspace: appearanceToken('control-workspace'),
     git: appearanceToken('control-git'),
     dispatch: appearanceToken('control-dispatch'),
     goal: appearanceToken('control-goal'),
