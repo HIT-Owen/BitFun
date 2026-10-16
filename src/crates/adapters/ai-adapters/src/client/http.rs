@@ -2,7 +2,7 @@ use crate::client::AIClient;
 use crate::types::ProxyConfig;
 use anyhow::{anyhow, Result};
 use log::{debug, error, info, warn};
-use reqwest::{Client, Proxy};
+use reqwest::{Client, NoProxy, Proxy};
 
 pub(crate) fn create_http_client(
     proxy_config: Option<ProxyConfig>,
@@ -63,9 +63,18 @@ pub(crate) fn create_http_client(
     }
 }
 
+/// Hosts that must never go through the upstream proxy. Loopback covers the
+/// SSH-tunnelled local model endpoints (e.g. 127.0.0.1:8001/8002): sending
+/// those through `Proxy::all()` breaks them whenever the proxy is down.
+const PROXY_BYPASS_HOSTS: &str = "localhost,127.0.0.1,::1";
+
 pub(crate) fn build_proxy(config: &ProxyConfig) -> Result<Proxy> {
     let proxy_url = normalize_proxy_url(&config.url);
     let mut proxy = Proxy::all(&proxy_url).map_err(|e| anyhow!("Failed to create proxy: {}", e))?;
+
+    // Always bypass loopback so local model endpoints stay reachable
+    // regardless of whether the upstream proxy is running.
+    proxy = proxy.no_proxy(NoProxy::from_string(PROXY_BYPASS_HOSTS));
 
     if let (Some(username), Some(password)) = (&config.username, &config.password) {
         if !username.is_empty() && !password.is_empty() {
