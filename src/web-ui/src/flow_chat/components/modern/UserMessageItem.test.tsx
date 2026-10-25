@@ -680,10 +680,17 @@ describe('UserMessageItem steering tag', () => {
   });
 
   it('deletes the turn and following history without rolling back workspace files', async () => {
-    activeSessionRef.current = createPartialHistorySession(true);
-    flowChatStoreMock.getState.mockReturnValue(
-      createHydratedHistoryState(activeSessionRef.current),
-    );
+    const partialSession = createPartialHistorySession(true);
+    activeSessionRef.current = partialSession;
+    const hydratedState = createHydratedHistoryState(partialSession);
+    flowChatStoreMock.getState.mockReturnValue({
+      sessions: new Map([['partial-session', partialSession]]),
+      activeSessionId: 'partial-session',
+    });
+    flowChatStoreMock.ensureSessionFullHistory.mockImplementation(async () => {
+      flowChatStoreMock.getState.mockReturnValue(hydratedState);
+      return true;
+    });
 
     act(() => {
       root.render(
@@ -757,6 +764,96 @@ describe('UserMessageItem steering tag', () => {
     expect(flowChatManagerMock.deleteChatSession).toHaveBeenCalledWith('single-session');
     expect(snapshotApiMock.deleteTurnsFrom).not.toHaveBeenCalled();
     expect(flowChatStoreMock.truncateDialogTurnsFrom).not.toHaveBeenCalled();
+  });
+
+  it('deletes a non-persisted side-question session without waiting for backend history', async () => {
+    const btwSession = {
+      sessionId: 'btw_session_1_abc',
+      sessionKind: 'btw',
+      historyState: 'new',
+      isPartial: false,
+      parentSessionId: 'main-session',
+      dialogTurns: [{ id: 'btw-turn-1', status: 'completed' }],
+    };
+    activeSessionRef.current = btwSession;
+    flowChatStoreMock.getState.mockReturnValue({
+      sessions: new Map([['btw_session_1_abc', btwSession]]),
+      activeSessionId: 'main-session',
+    });
+
+    act(() => {
+      root.render(
+        <FlowChatContext.Provider
+          value={{
+            sessionId: 'btw_session_1_abc',
+            allowUserMessageRollback: true,
+            allowUserMessageEdit: true,
+          }}
+        >
+          <UserMessageItem
+            message={{ id: 'user-btw-1', content: 'side question', timestamp: 1000 }}
+            turnId="btw-turn-1"
+          />
+        </FlowChatContext.Provider>,
+      );
+    });
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('.user-message-item__delete-btn')?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(flowChatStoreMock.ensureSessionFullHistory).not.toHaveBeenCalled();
+    expect(flowChatManagerMock.deleteChatSession).toHaveBeenCalledWith('btw_session_1_abc');
+    expect(snapshotApiMock.deleteTurnsFrom).not.toHaveBeenCalled();
+  });
+
+  it('deletes the later turns of a non-persisted side-question session', async () => {
+    const btwSession = {
+      sessionId: 'btw_session_2_def',
+      sessionKind: 'btw',
+      historyState: 'new',
+      isPartial: false,
+      parentSessionId: 'main-session',
+      dialogTurns: [
+        { id: 'btw-turn-1', status: 'completed' },
+        { id: 'btw-turn-2', status: 'completed' },
+      ],
+    };
+    activeSessionRef.current = btwSession;
+    flowChatStoreMock.getState.mockReturnValue({
+      sessions: new Map([['btw_session_2_def', btwSession]]),
+      activeSessionId: 'main-session',
+    });
+
+    act(() => {
+      root.render(
+        <FlowChatContext.Provider
+          value={{
+            sessionId: 'btw_session_2_def',
+            allowUserMessageRollback: true,
+            allowUserMessageEdit: true,
+          }}
+        >
+          <UserMessageItem
+            message={{ id: 'user-btw-2', content: 'second side question', timestamp: 1000 }}
+            turnId="btw-turn-2"
+          />
+        </FlowChatContext.Provider>,
+      );
+    });
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('.user-message-item__delete-btn')?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(flowChatStoreMock.ensureSessionFullHistory).not.toHaveBeenCalled();
+    expect(snapshotApiMock.deleteTurnsFrom).toHaveBeenCalledWith('btw_session_2_def', 1);
+    expect(flowChatStoreMock.truncateDialogTurnsFrom).toHaveBeenCalledWith('btw_session_2_def', 1);
+    expect(flowChatManagerMock.deleteChatSession).not.toHaveBeenCalled();
   });
 
   it('hydrates a cataloged history-window Turn before editing and rerunning', async () => {

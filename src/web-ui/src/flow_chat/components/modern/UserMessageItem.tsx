@@ -357,16 +357,27 @@ export const UserMessageItem = React.memo<UserMessageItemProps>(
 
       setIsDeletingTurns(true);
       try {
-        const historyReady = await flowChatStore.ensureSessionFullHistory(
-          resolvedSessionId,
-          'user-message-delete',
-        );
+        // Only a partial-history projection needs hydration before the Turn
+        // index can be trusted. Sessions that already hold their complete
+        // in-memory history must not be gated on a ready backend history:
+        // side-question (`/btw`) child sessions are never persisted and keep
+        // reporting a non-ready history state for their whole lifetime.
+        if (flowChatStore.getState().sessions.get(resolvedSessionId)?.isPartial === true) {
+          const historyReady = await flowChatStore.ensureSessionFullHistory(
+            resolvedSessionId,
+            'user-message-delete',
+          );
+          if (!historyReady) {
+            throw new Error(t('message.cannotDeleteTurns'));
+          }
+        }
+
         const hydratedTurnIndex = flowChatStore
           .getState()
           .sessions
           .get(resolvedSessionId)
           ?.dialogTurns.findIndex(turn => turn.id === turnId) ?? -1;
-        if (!historyReady || hydratedTurnIndex < 0) {
+        if (hydratedTurnIndex < 0) {
           throw new Error(t('message.cannotDeleteTurns'));
         }
 
