@@ -107,8 +107,12 @@ commands, use the nearest local guide. The full script registry remains in
   uncommitted in the working tree.
 - Do all work on a dedicated `dev` branch. Never commit directly to `main`.
   After a change is verified working, merge `dev` back into `main`.
-- This repository is built and used locally only. Do not push to any remote and
-  do not pull from any remote.
+- This repository is built and used locally only. Do not push to or pull from
+  the upstream `origin` (`GCWing/BitFun`).
+- The only permitted remote write target is the personal fork
+  `fork` = `https://github.com/HIT-Owen/BitFun`, and only for `dev-*` feature
+  branches. Pushing `main` or `dev` to the fork still requires explicit
+  confirmation. Do not pull from any remote.
 
 ### Process artifacts
 

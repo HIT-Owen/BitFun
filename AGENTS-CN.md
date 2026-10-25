@@ -84,6 +84,16 @@ Web UI、mobile、CLI、Desktop、Installer、打包及 focused test 命令由�
 
 ## 全局规则
 
+### Git 工作流
+
+- 每个 bug 修复和功能优化都要在 Git 中留痕，不要把改动留在工作区未提交。
+- 所有工作都在专门的 `dev` 分支上进行，绝不直接提交到 `main`；改动验证通过后把
+  `dev` 合并回 `main`。
+- 本仓库仅在本地构建使用。不要向 `origin` 上游（`GCWing/BitFun`）推送，也不要从任何
+  远程拉取。
+- 唯一允许的远程写入目标是个人 fork `fork` = `https://github.com/HIT-Owen/BitFun`，
+  且只用于 `dev-*` 特性分支；把 `main` 或 `dev` 推送到 fork 仍需单独确认。
+
 ### 流程产物
 
 - 不要新增或更新 `docs/superpowers/**` 下的文件。临时计划、设计和实现过程文档仅保留在本地；
