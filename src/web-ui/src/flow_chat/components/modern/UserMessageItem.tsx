@@ -6,7 +6,7 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { getAppearanceOverlayHost } from '@/infrastructure/appearance/runtime/AppearanceOverlayHost';
-import { Copy, Check, RotateCcw, Loader2, ArrowDownToLine, X, CircleUser, Pencil } from 'lucide-react';
+import { Copy, Check, RotateCcw, Loader2, ArrowDownToLine, X, CircleUser, Pencil, Trash2 } from 'lucide-react';
 import type { DialogTurn, FlowUserSteeringItem } from '../../types/flow-chat';
 import { flowChatManager } from '../../services/FlowChatManager';
 import { useFlowChatContext } from './FlowChatContext';
@@ -102,6 +102,7 @@ export const UserMessageItem = React.memo<UserMessageItemProps>(
     const [expanded, setExpanded] = useState(false);
     const [hasOverflow, setHasOverflow] = useState(false);
     const [isRollingBack, setIsRollingBack] = useState(false);
+    const [isDeletingTurns, setIsDeletingTurns] = useState(false);
     const [lightboxImage, setLightboxImage] = useState<string | null>(null);
     // Fine-grained selectors: only the message being edited re-renders on
     // draft keystrokes; other list items subscribe to booleans that rarely flip.
@@ -154,14 +155,15 @@ export const UserMessageItem = React.memo<UserMessageItemProps>(
     const isSystemTriggered = Boolean(
       message?.metadata?.triggerSource && message.metadata.triggerSource !== 'desktop_ui',
     );
-    const canRollback =
+    const canMutateTurnHistory =
       !steeringStatus &&
       canShowRollbackAction &&
       !!resolvedSessionId &&
       actionTurnIndex >= 0 &&
-      !isRemoteSession &&
-      !isRollingBack &&
-      !isEditSubmitting;
+      !isRemoteSession;
+    const canRollback = canMutateTurnHistory && !isRollingBack && !isEditSubmitting && !isDeletingTurns;
+    const canDeleteTurns =
+      canMutateTurnHistory && !isDeletingTurns && !isRollingBack && !isEditSubmitting;
     const canEditBase =
       allowUserMessageEdit &&
       !!resolvedSessionId &&
@@ -185,6 +187,11 @@ export const UserMessageItem = React.memo<UserMessageItemProps>(
       : isRemoteSession
         ? t('message.rollbackDisabledRemote')
         : t('message.cannotRollback');
+    const deleteTurnsTooltip = canDeleteTurns
+      ? t('message.deleteTurns', { index: actionTurnIndex + 1 })
+      : isRemoteSession
+        ? t('message.deleteTurnsDisabledRemote')
+        : t('message.cannotDeleteTurns');
     const steeringTag = steeringStatus === 'pending'
       ? {
           className: 'user-message-item__steering-tag--pending',
@@ -322,6 +329,52 @@ export const UserMessageItem = React.memo<UserMessageItemProps>(
         setIsRollingBack(false);
       }
     }, [actionTurnIndex, canRollback, composerPresentation, resolvedSessionId, t, turnId, messageContent]);
+
+    const handleDeleteTurns = useCallback(async (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!canDeleteTurns || !resolvedSessionId) return;
+
+      const index = actionTurnIndex + 1;
+      const confirmed = await confirmDanger(
+        t('message.deleteTurnsDialogTitle', { index }),
+        (
+          <>
+            <p className="confirm-dialog__message-intro">{t('message.deleteTurnsDialogIntro')}</p>
+            <ul className="confirm-dialog__bullet-list">
+              <li>{t('message.deleteTurnsDialogBulletHistory')}</li>
+              <li>{t('message.deleteTurnsDialogBulletFiles')}</li>
+            </ul>
+          </>
+        )
+      );
+      if (!confirmed) return;
+
+      setIsDeletingTurns(true);
+      try {
+        const historyReady = await flowChatStore.ensureSessionFullHistory(
+          resolvedSessionId,
+          'user-message-delete',
+        );
+        const hydratedTurnIndex = flowChatStore
+          .getState()
+          .sessions
+          .get(resolvedSessionId)
+          ?.dialogTurns.findIndex(turn => turn.id === turnId) ?? -1;
+        if (!historyReady || hydratedTurnIndex < 0) {
+          throw new Error(t('message.cannotDeleteTurns'));
+        }
+
+        await snapshotAPI.deleteTurnsFrom(resolvedSessionId, hydratedTurnIndex);
+        flowChatStore.truncateDialogTurnsFrom(resolvedSessionId, hydratedTurnIndex);
+
+        notificationService.success(t('message.deleteTurnsSuccess'));
+      } catch (error) {
+        log.error('Turn deletion failed', { sessionId: resolvedSessionId, turnId, error });
+        notificationService.error(`${t('message.deleteTurnsFailed')}: ${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        setIsDeletingTurns(false);
+      }
+    }, [actionTurnIndex, canDeleteTurns, resolvedSessionId, t, turnId]);
 
     const handleBeginEdit = useCallback((e: React.MouseEvent) => {
       e.stopPropagation();
@@ -640,20 +693,36 @@ export const UserMessageItem = React.memo<UserMessageItemProps>(
                   </button>
                 </Tooltip>
               ) : canShowRollbackAction && !steeringStatus ? (
-                <Tooltip content={rollbackTooltip}>
-                  <button
-                    className="user-message-item__rollback-btn"
-                    onClick={handleRollback}
-                    disabled={!canRollback}
-                    title={rollbackTooltip}
-                  >
-                    {isRollingBack ? (
-                      <Loader2 size={14} className="user-message-item__rollback-spinner" />
-                    ) : (
-                      <RotateCcw size={14} />
-                    )}
-                  </button>
-                </Tooltip>
+                <>
+                  <Tooltip content={rollbackTooltip}>
+                    <button
+                      className="user-message-item__rollback-btn"
+                      onClick={handleRollback}
+                      disabled={!canRollback}
+                      title={rollbackTooltip}
+                    >
+                      {isRollingBack ? (
+                        <Loader2 size={14} className="user-message-item__rollback-spinner" />
+                      ) : (
+                        <RotateCcw size={14} />
+                      )}
+                    </button>
+                  </Tooltip>
+                  <Tooltip content={deleteTurnsTooltip}>
+                    <button
+                      className="user-message-item__delete-btn"
+                      onClick={handleDeleteTurns}
+                      disabled={!canDeleteTurns}
+                      title={deleteTurnsTooltip}
+                    >
+                      {isDeletingTurns ? (
+                        <Loader2 size={14} className="user-message-item__rollback-spinner" />
+                      ) : (
+                        <Trash2 size={14} />
+                      )}
+                    </button>
+                  </Tooltip>
+                </>
               ) : null}
             </div>
             </div>

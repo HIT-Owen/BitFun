@@ -123,6 +123,32 @@ fn history_rollback_partial_failure(error: impl std::fmt::Display) -> String {
     )
 }
 
+async fn forget_local_workspace_turns(
+    port: &dyn LocalWorkspaceSnapshotPort,
+    workspace_path: PathBuf,
+    session_id: String,
+    turn_index: usize,
+) -> Result<(), String> {
+    port.forget_workspace_turns_from(LocalWorkspaceSnapshotTurnRequest {
+        workspace_path,
+        session_id,
+        turn_index,
+    })
+    .await
+    .map_err(|error| {
+        format!(
+            "Failed to forget snapshot turns: {}",
+            snapshot_compatibility_error(error)
+        )
+    })
+}
+
+fn history_deletion_partial_failure(error: impl std::fmt::Display) -> String {
+    format!(
+        "Snapshot turn history was discarded, but session history deletion failed. Reload the session before retrying: {error}"
+    )
+}
+
 fn rollback_device_events(
     session_id: &str,
     turn_index: usize,
@@ -191,6 +217,7 @@ pub(crate) async fn rollback_to_turn(state: &PeerHostState, args: &Value) -> Res
     let workspace_path = get_string(request, "workspacePath")?;
     let turn_index = get_usize(request, "turnIndex")?;
     let delete_turns = optional_bool(request, "deleteTurns").unwrap_or(false);
+    let restore_files = optional_bool(request, "restoreFiles").unwrap_or(true);
 
     bitfun_agent_runtime::session_control::validate_session_id(&session_id)?;
     require_complete_rollback_workspace(request, &workspace_path).await?;
@@ -250,13 +277,24 @@ pub(crate) async fn rollback_to_turn(state: &PeerHostState, args: &Value) -> Res
         HashSet::new()
     };
 
-    let restored_files = rollback_local_workspace_files(
-        state.local_workspace_snapshot.as_ref(),
-        workspace,
-        session_id.clone(),
-        turn_index,
-    )
-    .await?;
+    let restored_files = if restore_files {
+        rollback_local_workspace_files(
+            state.local_workspace_snapshot.as_ref(),
+            workspace,
+            session_id.clone(),
+            turn_index,
+        )
+        .await?
+    } else {
+        forget_local_workspace_turns(
+            state.local_workspace_snapshot.as_ref(),
+            workspace,
+            session_id.clone(),
+            turn_index,
+        )
+        .await?;
+        Vec::new()
+    };
 
     let restored_files_str: Vec<String> = restored_files
         .iter()
@@ -270,7 +308,11 @@ pub(crate) async fn rollback_to_turn(state: &PeerHostState, args: &Value) -> Res
             .rollback_persisted_session_context_to_turn_start(&mutation, turn_index)
             .await
         {
-            return Err(history_rollback_partial_failure(error));
+            return Err(if restore_files {
+                history_rollback_partial_failure(error)
+            } else {
+                history_deletion_partial_failure(error)
+            });
         }
 
         if !rolled_back_parent_turn_ids.is_empty() {
@@ -373,6 +415,13 @@ mod tests {
             self.rollback_calls.fetch_add(1, Ordering::SeqCst);
             *self.rollback_request.lock().expect("rollback request lock") = Some(request);
             Ok(vec![PathBuf::from("restored.txt")])
+        }
+
+        async fn forget_workspace_turns_from(
+            &self,
+            _request: LocalWorkspaceSnapshotTurnRequest,
+        ) -> PortResult<()> {
+            Ok(())
         }
     }
 

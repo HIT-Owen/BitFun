@@ -520,6 +520,36 @@ export class SnapshotAPI {
     }
   }
 
+  /**
+   * Deletes the persisted conversation turns from `turnIndex` on, keeping the
+   * workspace files those turns produced. Recorded snapshot operations of the
+   * removed turns are discarded instead of reverted.
+   */
+  async deleteTurnsFrom(
+    sessionId: string,
+    turnIndex: number,
+    workspacePath?: string,
+  ): Promise<void> {
+    try {
+      const scope = requireSessionSnapshotScope(sessionId, workspacePath);
+      await api.invoke('rollback_to_turn', {
+        request: {
+          session_id: sessionId,
+          turn_index: turnIndex,
+          delete_turns: true,
+          restore_files: false,
+          ...scope,
+        }
+      });
+    } catch (error) {
+      throw createTauriCommandError('rollback_to_turn', error, {
+        sessionId,
+        turnIndex,
+        workspacePath,
+      });
+    }
+  }
+
    
   async rollbackEntireSession(
     sessionId: string,

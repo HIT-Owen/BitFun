@@ -15,6 +15,7 @@ const activeSessionRef: { current: any } = {
 };
 const snapshotApiMock = vi.hoisted(() => ({
   rollbackToTurn: vi.fn(async () => [] as string[]),
+  deleteTurnsFrom: vi.fn(async () => undefined),
 }));
 const componentLibraryMock = vi.hoisted(() => ({
   confirmDanger: vi.fn(async () => true),
@@ -171,6 +172,7 @@ describe('UserMessageItem steering tag', () => {
     flowChatStoreMock.ensureSessionFullHistory.mockResolvedValue(true);
     componentLibraryMock.confirmDanger.mockResolvedValue(true);
     snapshotApiMock.rollbackToTurn.mockResolvedValue([]);
+    snapshotApiMock.deleteTurnsFrom.mockResolvedValue(undefined);
     editServiceMock.editAndRerunUserMessage.mockResolvedValue(undefined);
     useMessageEditStore.getState().cancelEdit();
     dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
@@ -449,9 +451,12 @@ describe('UserMessageItem steering tag', () => {
       '.user-message-item__rollback-btn',
     );
     const editButton = container.querySelector<HTMLButtonElement>('.user-message-item__edit-btn');
+    const deleteButton = container.querySelector<HTMLButtonElement>('.user-message-item__delete-btn');
 
     expect(rollbackButton?.disabled).toBe(true);
     expect(rollbackButton?.title).toContain('message.rollbackDisabledRemote');
+    expect(deleteButton?.disabled).toBe(true);
+    expect(deleteButton?.title).toContain('message.deleteTurnsDisabledRemote');
     expect(editButton?.disabled).toBe(false);
     expect(editButton?.title).toContain('message.remoteEditAction');
   });
@@ -662,6 +667,45 @@ describe('UserMessageItem steering tag', () => {
       'user-message-rollback',
     );
     expect(snapshotApiMock.rollbackToTurn).toHaveBeenCalledWith('partial-session', 4, true);
+    expect(flowChatStoreMock.truncateDialogTurnsFrom).toHaveBeenCalledWith('partial-session', 4);
+  });
+
+  it('deletes the turn and following history without rolling back workspace files', async () => {
+    activeSessionRef.current = createPartialHistorySession(true);
+    flowChatStoreMock.getState.mockReturnValue(
+      createHydratedHistoryState(activeSessionRef.current),
+    );
+
+    act(() => {
+      root.render(
+        <FlowChatContext.Provider
+          value={{
+            sessionId: 'partial-session',
+            allowUserMessageRollback: true,
+            allowUserMessageEdit: true,
+          }}
+        >
+          <UserMessageItem
+            message={{ id: 'user-partial-5', content: 'older window prompt', timestamp: 1000 }}
+            turnId="turn-5"
+          />
+        </FlowChatContext.Provider>,
+      );
+    });
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('.user-message-item__delete-btn')?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(componentLibraryMock.confirmDanger).toHaveBeenCalled();
+    expect(flowChatStoreMock.ensureSessionFullHistory).toHaveBeenCalledWith(
+      'partial-session',
+      'user-message-delete',
+    );
+    expect(snapshotApiMock.deleteTurnsFrom).toHaveBeenCalledWith('partial-session', 4);
+    expect(snapshotApiMock.rollbackToTurn).not.toHaveBeenCalled();
     expect(flowChatStoreMock.truncateDialogTurnsFrom).toHaveBeenCalledWith('partial-session', 4);
   });
 

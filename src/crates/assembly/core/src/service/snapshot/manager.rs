@@ -90,6 +90,19 @@ impl SnapshotManager {
             .await
     }
 
+    /// Drops snapshot turn history at or after a turn index without restoring
+    /// the workspace files those turns produced.
+    pub async fn forget_turns_from(
+        &self,
+        session_id: &str,
+        turn_index: usize,
+    ) -> SnapshotResult<()> {
+        let snapshot_service = self.snapshot_service.read().await;
+        snapshot_service
+            .forget_turns_from(session_id, turn_index)
+            .await
+    }
+
     pub(crate) async fn prepare_workspace_revert(
         &self,
         session_id: &str,

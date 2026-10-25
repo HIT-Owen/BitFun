@@ -493,6 +493,18 @@ impl LocalWorkspaceSnapshotPort for CoreLocalWorkspaceSnapshot {
             .await
             .map_err(snapshot_port_error)
     }
+
+    async fn forget_workspace_turns_from(
+        &self,
+        request: LocalWorkspaceSnapshotTurnRequest,
+    ) -> PortResult<()> {
+        validate_persisted_session_id(&request.session_id).map_err(runtime_port_error)?;
+        ensure_local_snapshot_manager(&request.workspace_path)
+            .await?
+            .forget_turns_from(&request.session_id, request.turn_index)
+            .await
+            .map_err(snapshot_port_error)
+    }
 }
 
 /// Product-assembly entry for the public Agent Runtime SDK.

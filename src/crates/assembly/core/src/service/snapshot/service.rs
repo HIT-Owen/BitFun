@@ -357,6 +357,25 @@ impl SnapshotService {
         snapshot_core.rollback_to_turn(session_id, turn_index).await
     }
 
+    /// Drops snapshot turn history at or after `turn_index` while keeping the
+    /// workspace files those turns produced.
+    pub async fn forget_turns_from(
+        &self,
+        session_id: &str,
+        turn_index: usize,
+    ) -> SnapshotResult<()> {
+        self.ensure_writable().await?;
+        info!(
+            "Forgetting snapshot turns: session_id={} turn_index={}",
+            session_id, turn_index
+        );
+
+        let mut snapshot_core = self.snapshot_core.write().await;
+        snapshot_core
+            .forget_turns_from(session_id, turn_index)
+            .await
+    }
+
     pub(crate) async fn prepare_workspace_revert(
         &self,
         session_id: &str,

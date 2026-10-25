@@ -53,6 +53,15 @@ pub trait LocalWorkspaceSnapshotPort: Send + Sync {
         &self,
         request: LocalWorkspaceSnapshotTurnRequest,
     ) -> PortResult<Vec<PathBuf>>;
+
+    /// Drops recorded turn history at or after `turn_index` without restoring
+    /// workspace files. The host calls this when it deletes conversation turns
+    /// but keeps the files those turns produced, so the next admitted turn
+    /// cannot inherit operations from the deleted branch.
+    async fn forget_workspace_turns_from(
+        &self,
+        request: LocalWorkspaceSnapshotTurnRequest,
+    ) -> PortResult<()>;
 }
 
 #[cfg(test)]

@@ -847,6 +847,35 @@ impl SnapshotCore {
         Ok(restored)
     }
 
+    /// Drops operation history at or after `target_turn` without touching the
+    /// workspace files. Used when the host deletes conversation turns but keeps
+    /// the files those turns produced: the next admitted turn reuses the same
+    /// turn index, so retaining the stale operations would make a later rollback
+    /// replay files from a branch the user already deleted.
+    pub async fn forget_turns_from(
+        &mut self,
+        session_id: &str,
+        target_turn: usize,
+    ) -> SnapshotResult<()> {
+        info!(
+            "Forgetting snapshot turns: session_id={} turn_index={}",
+            session_id, target_turn
+        );
+        {
+            let Some(session) = self.sessions.get_mut(session_id) else {
+                return Ok(());
+            };
+            session
+                .turns
+                .retain(|turn_index, _| *turn_index < target_turn);
+            session.last_updated = SystemTime::now();
+        }
+        self.persist_session(session_id).await?;
+        self.rebuild_operation_index();
+
+        Ok(())
+    }
+
     /// Extends the pre-undo workspace checkpoint for every path affected at or
     /// after the requested boundary. Repeated undo can safely discover earlier
     /// paths because paths not already checkpointed are still at their original
@@ -1915,6 +1944,55 @@ mod tests {
         assert_eq!(
             tokio::fs::read_to_string(&file_path).await.unwrap(),
             "base\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn forget_turns_from_drops_operation_history_without_touching_workspace_files() {
+        let mut runtime = make_test_runtime("forget_turns").await;
+        let file_path = runtime.workspace.join("src/lib.rs");
+        fs::create_dir_all(file_path.parent().unwrap()).unwrap();
+        tokio::fs::write(&file_path, "base\n").await.unwrap();
+
+        let mut third_turn_operation_id = String::new();
+        for (turn_index, next) in [(0, "first\n"), (1, "second\n"), (2, "third\n")] {
+            let operation_id = runtime
+                .core
+                .start_file_operation(
+                    "session-1",
+                    turn_index,
+                    file_path.clone(),
+                    OperationType::Modify,
+                    "Edit".to_string(),
+                    json!({ "file_path": "src/lib.rs" }),
+                    None,
+                )
+                .await
+                .unwrap();
+            tokio::fs::write(&file_path, next).await.unwrap();
+            if turn_index == 2 {
+                third_turn_operation_id = operation_id;
+            }
+        }
+
+        runtime
+            .core
+            .forget_turns_from("session-1", 1)
+            .await
+            .unwrap();
+
+        let session = runtime.core.sessions.get("session-1").unwrap();
+        assert_eq!(
+            session.turns.keys().copied().collect::<Vec<_>>(),
+            vec![0usize]
+        );
+        assert!(!runtime
+            .core
+            .operation_index
+            .contains_key(&third_turn_operation_id));
+        assert_eq!(
+            tokio::fs::read_to_string(&file_path).await.unwrap(),
+            "third\n"
         );
     }
 }

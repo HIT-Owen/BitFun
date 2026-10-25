@@ -106,10 +106,20 @@ pub struct RollbackTurnRequest {
     pub turn_index: usize,
     #[serde(default)]
     pub delete_turns: bool,
+    /// Restore workspace files to their state before `turn_index`. Turn
+    /// deletion keeps the files produced by the removed turns when this is
+    /// false, so the snapshot operation history is discarded instead of
+    /// reverted.
+    #[serde(default = "default_restore_files", alias = "restoreFiles")]
+    pub restore_files: bool,
     #[serde(alias = "workspacePath")]
     pub workspace_path: String,
     #[serde(flatten)]
     pub remote_scope: SnapshotRemoteScope,
+}
+
+fn default_restore_files() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -348,6 +358,24 @@ async fn rollback_local_workspace_files(
         .iter()
         .map(|path| path.to_string_lossy().to_string())
         .collect())
+}
+
+async fn forget_local_workspace_turns(
+    port: &dyn LocalWorkspaceSnapshotPort,
+    workspace_path: PathBuf,
+    workspace_display: &str,
+    session_id: String,
+    turn_index: usize,
+) -> Result<(), String> {
+    port.forget_workspace_turns_from(LocalWorkspaceSnapshotTurnRequest {
+        workspace_path,
+        session_id,
+        turn_index,
+    })
+    .await
+    .map_err(|error| {
+        local_snapshot_command_error("forget snapshot turns", workspace_display, error)
+    })
 }
 
 #[cfg(test)]
@@ -722,14 +750,30 @@ pub async fn rollback_to_turn(
         HashSet::new()
     };
 
-    let restored_files_str = rollback_local_workspace_files(
-        runtime.local_workspace_snapshot(),
-        workspace_path,
-        &request.workspace_path,
-        request.session_id.clone(),
-        request.turn_index,
-    )
-    .await?;
+    let restored_files_str = if request.restore_files {
+        rollback_local_workspace_files(
+            runtime.local_workspace_snapshot(),
+            workspace_path,
+            &request.workspace_path,
+            request.session_id.clone(),
+            request.turn_index,
+        )
+        .await?
+    } else {
+        // History deletion that keeps the files its turns produced: drop the
+        // recorded snapshot operations of the removed turns instead of
+        // reverting them, so the next admitted turn does not inherit a branch
+        // the user already deleted.
+        forget_local_workspace_turns(
+            runtime.local_workspace_snapshot(),
+            workspace_path,
+            &request.workspace_path,
+            request.session_id.clone(),
+            request.turn_index,
+        )
+        .await?;
+        Vec::new()
+    };
 
     let deleted_turns_count = rolled_back_parent_turn_ids.len();
     if request.delete_turns {
@@ -740,9 +784,15 @@ pub async fn rollback_to_turn(
             )
             .await
             .map_err(|error| {
-                format!(
-                    "Workspace files were rolled back, but session history rollback failed. Reload the session before retrying: {error}"
-                )
+                if request.restore_files {
+                    format!(
+                        "Workspace files were rolled back, but session history rollback failed. Reload the session before retrying: {error}"
+                    )
+                } else {
+                    format!(
+                        "Snapshot turn history was discarded, but session history deletion failed. Reload the session before retrying: {error}"
+                    )
+                }
             })?;
         if !rolled_back_parent_turn_ids.is_empty() {
             if let Err(error) = compatibility
@@ -1685,6 +1735,13 @@ mod tests {
         ) -> PortResult<Vec<PathBuf>> {
             self.rollback_calls.fetch_add(1, Ordering::SeqCst);
             Ok(vec![PathBuf::from("restored.txt")])
+        }
+
+        async fn forget_workspace_turns_from(
+            &self,
+            _request: LocalWorkspaceSnapshotTurnRequest,
+        ) -> PortResult<()> {
+            Ok(())
         }
     }
 

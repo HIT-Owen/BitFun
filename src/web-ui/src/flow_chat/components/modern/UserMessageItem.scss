@@ -53,6 +53,10 @@
       opacity: 1;
     }
 
+    .user-message-item__delete-btn {
+      opacity: 1;
+    }
+
     .user-message-item__copy-btn:disabled,
     .user-message-item__edit-btn:disabled {
       opacity: 0.35;
@@ -63,7 +67,8 @@
     border-color: color-mix(in srgb, var(--bf-appearance-token-border-accent) 68%, var(--bf-appearance-token-border-base));
 
     .user-message-item__copy-btn,
-    .user-message-item__rollback-btn {
+    .user-message-item__rollback-btn,
+    .user-message-item__delete-btn {
       opacity: 1;
     }
   }
@@ -457,7 +462,8 @@
   animation: user-message-item-spin 1s linear infinite;
 }
 
-.user-message-item__rollback-btn {
+.user-message-item__rollback-btn,
+.user-message-item__delete-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -506,6 +512,12 @@
     height: 14px;
     display: block;
     flex-shrink: 0;
+  }
+}
+
+.user-message-item__delete-btn {
+  &:hover:not(:disabled) {
+    color: var(--bf-appearance-token-color-error);
   }
 }
 
@@ -624,6 +636,7 @@
   .user-message-item__copy-btn,
   .user-message-item__edit-btn,
   .user-message-item__rollback-btn,
+  .user-message-item__delete-btn,
   .user-message-edit-composer__icon-button,
   .user-message-item__image-thumb,
   .user-message-item__lightbox-close {
