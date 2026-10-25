@@ -107,12 +107,15 @@ commands, use the nearest local guide. The full script registry remains in
   uncommitted in the working tree.
 - Do all work on a dedicated `dev` branch. Never commit directly to `main`.
   After a change is verified working, merge `dev` back into `main`.
+- Remotes: `upstream` = `GCWing/BitFun`, renamed to `GCWing/OpenBitFun` and
+  rewritten as the 1.0.0 line, which is not data-compatible with this 0.2.x
+  checkout. `origin` = the personal fork `HIT-Owen/BitFun`, which stays on the
+  0.2.x line and is the real baseline for this work.
 - This repository is built and used locally only. Do not push to or pull from
-  the upstream `origin` (`GCWing/BitFun`).
-- The only permitted remote write target is the personal fork
-  `fork` = `https://github.com/HIT-Owen/BitFun`, and only for `dev-*` feature
-  branches. Pushing `main` or `dev` to the fork still requires explicit
-  confirmation. Do not pull from any remote.
+  `upstream`.
+- The only permitted remote write target is `origin` (the personal fork), and
+  only for `dev-*` feature branches. Pushing `main` or `dev` there still
+  requires explicit confirmation. Do not pull from any remote.
 
 ### Process artifacts
 
