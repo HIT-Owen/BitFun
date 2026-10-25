@@ -29,6 +29,10 @@ const editServiceMock = vi.hoisted(() => ({
   })),
   editAndRerunUserMessage: vi.fn(async () => undefined),
 }));
+const flowChatManagerMock = vi.hoisted(() => ({
+  deleteChatSession: vi.fn(async () => undefined),
+  sendMessage: vi.fn(async () => undefined),
+}));
 
 function createPartialHistorySession(includeCatalog: boolean) {
   const session: any = {
@@ -146,6 +150,10 @@ vi.mock('../../services/UserMessageEditService', () => ({
   editAndRerunUserMessage: editServiceMock.editAndRerunUserMessage,
 }));
 
+vi.mock('../../services/FlowChatManager', () => ({
+  flowChatManager: flowChatManagerMock,
+}));
+
 vi.mock('./UserMessageEditComposer', () => ({
   UserMessageEditComposer: ({ onSubmit }: { onSubmit: () => void }) => (
     <button
@@ -173,6 +181,7 @@ describe('UserMessageItem steering tag', () => {
     componentLibraryMock.confirmDanger.mockResolvedValue(true);
     snapshotApiMock.rollbackToTurn.mockResolvedValue([]);
     snapshotApiMock.deleteTurnsFrom.mockResolvedValue(undefined);
+    flowChatManagerMock.deleteChatSession.mockResolvedValue(undefined);
     editServiceMock.editAndRerunUserMessage.mockResolvedValue(undefined);
     useMessageEditStore.getState().cancelEdit();
     dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
@@ -707,6 +716,47 @@ describe('UserMessageItem steering tag', () => {
     expect(snapshotApiMock.deleteTurnsFrom).toHaveBeenCalledWith('partial-session', 4);
     expect(snapshotApiMock.rollbackToTurn).not.toHaveBeenCalled();
     expect(flowChatStoreMock.truncateDialogTurnsFrom).toHaveBeenCalledWith('partial-session', 4);
+  });
+
+  it('deletes the whole session when the removed turn is its only remaining turn', async () => {
+    const singleTurnSession = {
+      sessionId: 'single-session',
+      sessionKind: 'normal',
+      isPartial: false,
+      dialogTurns: [{ id: 'turn-1', status: 'completed' }],
+    };
+    activeSessionRef.current = singleTurnSession;
+    flowChatStoreMock.getState.mockReturnValue({
+      sessions: new Map([['single-session', singleTurnSession]]),
+      activeSessionId: 'single-session',
+    });
+
+    act(() => {
+      root.render(
+        <FlowChatContext.Provider
+          value={{
+            sessionId: 'single-session',
+            allowUserMessageRollback: true,
+            allowUserMessageEdit: true,
+          }}
+        >
+          <UserMessageItem
+            message={{ id: 'user-single-1', content: 'only prompt', timestamp: 1000 }}
+            turnId="turn-1"
+          />
+        </FlowChatContext.Provider>,
+      );
+    });
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('.user-message-item__delete-btn')?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(flowChatManagerMock.deleteChatSession).toHaveBeenCalledWith('single-session');
+    expect(snapshotApiMock.deleteTurnsFrom).not.toHaveBeenCalled();
+    expect(flowChatStoreMock.truncateDialogTurnsFrom).not.toHaveBeenCalled();
   });
 
   it('hydrates a cataloged history-window Turn before editing and rerunning', async () => {

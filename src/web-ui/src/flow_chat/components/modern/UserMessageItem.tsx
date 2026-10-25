@@ -187,8 +187,11 @@ export const UserMessageItem = React.memo<UserMessageItemProps>(
       : isRemoteSession
         ? t('message.rollbackDisabledRemote')
         : t('message.cannotRollback');
+    const deletesWholeSession = actionTurnIndex === 0;
     const deleteTurnsTooltip = canDeleteTurns
-      ? t('message.deleteTurns', { index: actionTurnIndex + 1 })
+      ? deletesWholeSession
+        ? t('message.deleteWholeSession')
+        : t('message.deleteTurns', { index: actionTurnIndex + 1 })
       : isRemoteSession
         ? t('message.deleteTurnsDisabledRemote')
         : t('message.cannotDeleteTurns');
@@ -336,13 +339,16 @@ export const UserMessageItem = React.memo<UserMessageItemProps>(
 
       const index = actionTurnIndex + 1;
       const confirmed = await confirmDanger(
-        t('message.deleteTurnsDialogTitle', { index }),
+        deletesWholeSession
+          ? t('message.deleteWholeSessionDialogTitle')
+          : t('message.deleteTurnsDialogTitle', { index }),
         (
           <>
             <p className="confirm-dialog__message-intro">{t('message.deleteTurnsDialogIntro')}</p>
             <ul className="confirm-dialog__bullet-list">
               <li>{t('message.deleteTurnsDialogBulletHistory')}</li>
               <li>{t('message.deleteTurnsDialogBulletFiles')}</li>
+              {deletesWholeSession && <li>{t('message.deleteTurnsDialogBulletWholeSession')}</li>}
             </ul>
           </>
         )
@@ -364,6 +370,14 @@ export const UserMessageItem = React.memo<UserMessageItemProps>(
           throw new Error(t('message.cannotDeleteTurns'));
         }
 
+        if (hydratedTurnIndex === 0) {
+          // Nothing stays behind, so drop the session itself together with its
+          // side-question and subagent children instead of leaving an empty one.
+          await flowChatManager.deleteChatSession(resolvedSessionId);
+          notificationService.success(t('message.deleteWholeSessionSuccess'));
+          return;
+        }
+
         await snapshotAPI.deleteTurnsFrom(resolvedSessionId, hydratedTurnIndex);
         flowChatStore.truncateDialogTurnsFrom(resolvedSessionId, hydratedTurnIndex);
 
@@ -374,7 +388,7 @@ export const UserMessageItem = React.memo<UserMessageItemProps>(
       } finally {
         setIsDeletingTurns(false);
       }
-    }, [actionTurnIndex, canDeleteTurns, resolvedSessionId, t, turnId]);
+    }, [actionTurnIndex, canDeleteTurns, deletesWholeSession, resolvedSessionId, t, turnId]);
 
     const handleBeginEdit = useCallback((e: React.MouseEvent) => {
       e.stopPropagation();
