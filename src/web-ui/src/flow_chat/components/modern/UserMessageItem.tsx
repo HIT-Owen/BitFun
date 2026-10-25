@@ -34,7 +34,11 @@ import type { SessionUsagePanelTab } from '../usage/sessionUsagePanelTypes';
 import { coerceSessionUsageReport } from '../usage/usageReportUtils';
 import { resolveSessionRelationship } from '../../utils/sessionMetadata';
 import { isRemoteWorkspaceSession } from '../../utils/sessionWorkspace';
-import { absoluteSessionTurnIndexForId } from '../../utils/flowChatTurnOrdinal';
+import {
+  absoluteSessionTurnIndexForId,
+  loadedSessionTurnIdForAbsoluteIndex,
+} from '../../utils/flowChatTurnOrdinal';
+import { resolveStorageTurnIndex } from '../../utils/flowChatTurnIdentity';
 import {
   composerPresentationToAccessibleText,
   composerPresentationContexts,
@@ -357,31 +361,33 @@ export const UserMessageItem = React.memo<UserMessageItemProps>(
 
       setIsDeletingTurns(true);
       try {
-        // Only a partial-history projection needs hydration before the Turn
-        // index can be trusted. Sessions that already hold their complete
-        // in-memory history must not be gated on a ready backend history:
-        // side-question (`/btw`) child sessions are never persisted and keep
-        // reporting a non-ready history state for their whole lifetime.
-        if (flowChatStore.getState().sessions.get(resolvedSessionId)?.isPartial === true) {
-          const historyReady = await flowChatStore.ensureSessionFullHistory(
-            resolvedSessionId,
-            'user-message-delete',
-          );
-          if (!historyReady) {
-            throw new Error(t('message.cannotDeleteTurns'));
-          }
-        }
+        const storeSession = flowChatStore.getState().sessions.get(resolvedSessionId);
+        const directTurnIndex = storeSession?.dialogTurns.findIndex(turn => turn.id === turnId) ?? -1;
+        // A rendered Turn object can be replaced when the runtime adopts an
+        // optimistic Turn, so fall back to the Turn ordinal identity.
+        const ordinalTurnId = resolvedAbsoluteTurnIndex !== undefined && storeSession
+          ? loadedSessionTurnIdForAbsoluteIndex(storeSession, resolvedAbsoluteTurnIndex)
+          : undefined;
+        const localTurnIndex = directTurnIndex >= 0
+          ? directTurnIndex
+          : ordinalTurnId
+            ? storeSession?.dialogTurns.findIndex(turn => turn.id === ordinalTurnId) ?? -1
+            : -1;
+        // Undefined means the Turn has no persisted identity: a side-question
+        // child session is never persisted and an optimistic Turn has not been
+        // written yet, so there is nothing for the backend to delete.
+        const storageTurnIndex = storeSession
+          ? resolveStorageTurnIndex(storeSession, turnId)
+          : undefined;
 
-        const hydratedTurnIndex = flowChatStore
-          .getState()
-          .sessions
-          .get(resolvedSessionId)
-          ?.dialogTurns.findIndex(turn => turn.id === turnId) ?? -1;
-        if (hydratedTurnIndex < 0) {
-          throw new Error(t('message.cannotDeleteTurns'));
-        }
+        // Undefined means the Turn has no persisted identity. A side-question
+        // (`/btw`) child session is never persisted, so there is nothing for the
+        // backend to delete; any other session falls back to the ordinal index,
+        // which matches the storage order once the Turn is written.
+        const persistedTurnIndex = storageTurnIndex
+          ?? (storeSession?.sessionKind === 'btw' ? undefined : actionTurnIndex);
 
-        if (hydratedTurnIndex === 0) {
+        if (deletesWholeSession) {
           // Nothing stays behind, so drop the session itself together with its
           // side-question and subagent children instead of leaving an empty one.
           await flowChatManager.deleteChatSession(resolvedSessionId);
@@ -389,8 +395,24 @@ export const UserMessageItem = React.memo<UserMessageItemProps>(
           return;
         }
 
-        await snapshotAPI.deleteTurnsFrom(resolvedSessionId, hydratedTurnIndex);
-        flowChatStore.truncateDialogTurnsFrom(resolvedSessionId, hydratedTurnIndex);
+        if (persistedTurnIndex !== undefined) {
+          await snapshotAPI.deleteTurnsFrom(resolvedSessionId, persistedTurnIndex);
+        }
+
+        const truncateIndex = localTurnIndex >= 0
+          ? localTurnIndex
+          : storeSession?.isPartial === true
+            ? -1
+            : persistedTurnIndex ?? actionTurnIndex;
+        if (truncateIndex >= 0) {
+          flowChatStore.truncateDialogTurnsFrom(resolvedSessionId, truncateIndex);
+        } else {
+          log.warn('Deleted Turns are not part of the loaded Turn window', {
+            sessionId: resolvedSessionId,
+            turnId,
+            turnIndex: persistedTurnIndex ?? actionTurnIndex,
+          });
+        }
 
         notificationService.success(t('message.deleteTurnsSuccess'));
       } catch (error) {
@@ -399,7 +421,7 @@ export const UserMessageItem = React.memo<UserMessageItemProps>(
       } finally {
         setIsDeletingTurns(false);
       }
-    }, [actionTurnIndex, canDeleteTurns, deletesWholeSession, resolvedSessionId, t, turnId]);
+    }, [actionTurnIndex, canDeleteTurns, deletesWholeSession, resolvedAbsoluteTurnIndex, resolvedSessionId, t, turnId]);
 
     const handleBeginEdit = useCallback((e: React.MouseEvent) => {
       e.stopPropagation();

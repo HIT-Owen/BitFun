@@ -679,18 +679,16 @@ describe('UserMessageItem steering tag', () => {
     expect(flowChatStoreMock.truncateDialogTurnsFrom).toHaveBeenCalledWith('partial-session', 4);
   });
 
-  it('deletes the turn and following history without rolling back workspace files', async () => {
+  it('deletes a cataloged history-window Turn by its persisted index without hydrating', async () => {
     const partialSession = createPartialHistorySession(true);
     activeSessionRef.current = partialSession;
-    const hydratedState = createHydratedHistoryState(partialSession);
     flowChatStoreMock.getState.mockReturnValue({
       sessions: new Map([['partial-session', partialSession]]),
       activeSessionId: 'partial-session',
     });
-    flowChatStoreMock.ensureSessionFullHistory.mockImplementation(async () => {
-      flowChatStoreMock.getState.mockReturnValue(hydratedState);
-      return true;
-    });
+    // A metadata-only history never reports a ready backend history; deletion
+    // must not depend on hydration succeeding.
+    flowChatStoreMock.ensureSessionFullHistory.mockResolvedValue(false);
 
     act(() => {
       root.render(
@@ -716,13 +714,56 @@ describe('UserMessageItem steering tag', () => {
     });
 
     expect(componentLibraryMock.confirmDanger).toHaveBeenCalled();
-    expect(flowChatStoreMock.ensureSessionFullHistory).toHaveBeenCalledWith(
-      'partial-session',
-      'user-message-delete',
-    );
+    expect(flowChatStoreMock.ensureSessionFullHistory).not.toHaveBeenCalled();
     expect(snapshotApiMock.deleteTurnsFrom).toHaveBeenCalledWith('partial-session', 4);
     expect(snapshotApiMock.rollbackToTurn).not.toHaveBeenCalled();
-    expect(flowChatStoreMock.truncateDialogTurnsFrom).toHaveBeenCalledWith('partial-session', 4);
+    // The loaded window only holds turn-20, so there is nothing local to cut.
+    expect(flowChatStoreMock.truncateDialogTurnsFrom).not.toHaveBeenCalled();
+  });
+
+  it('deletes a complete-session Turn and truncates the loaded list', async () => {
+    const session = {
+      sessionId: 'complete-session',
+      sessionKind: 'normal',
+      isPartial: false,
+      dialogTurns: [
+        { id: 'turn-1', status: 'completed', backendTurnIndex: 0 },
+        { id: 'turn-2', status: 'completed', backendTurnIndex: 1 },
+        { id: 'turn-3', status: 'completed', backendTurnIndex: 2 },
+      ],
+    };
+    activeSessionRef.current = session;
+    flowChatStoreMock.getState.mockReturnValue({
+      sessions: new Map([['complete-session', session]]),
+      activeSessionId: 'complete-session',
+    });
+
+    act(() => {
+      root.render(
+        <FlowChatContext.Provider
+          value={{
+            sessionId: 'complete-session',
+            allowUserMessageRollback: true,
+            allowUserMessageEdit: true,
+          }}
+        >
+          <UserMessageItem
+            message={{ id: 'user-complete-2', content: 'second prompt', timestamp: 1000 }}
+            turnId="turn-2"
+          />
+        </FlowChatContext.Provider>,
+      );
+    });
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('.user-message-item__delete-btn')?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(snapshotApiMock.deleteTurnsFrom).toHaveBeenCalledWith('complete-session', 1);
+    expect(flowChatStoreMock.truncateDialogTurnsFrom).toHaveBeenCalledWith('complete-session', 1);
+    expect(flowChatManagerMock.deleteChatSession).not.toHaveBeenCalled();
   });
 
   it('deletes the whole session when the removed turn is its only remaining turn', async () => {
@@ -809,7 +850,7 @@ describe('UserMessageItem steering tag', () => {
     expect(snapshotApiMock.deleteTurnsFrom).not.toHaveBeenCalled();
   });
 
-  it('deletes the later turns of a non-persisted side-question session', async () => {
+  it('deletes the later turns of a non-persisted side-question session locally', async () => {
     const btwSession = {
       sessionId: 'btw_session_2_def',
       sessionKind: 'btw',
@@ -851,7 +892,9 @@ describe('UserMessageItem steering tag', () => {
     });
 
     expect(flowChatStoreMock.ensureSessionFullHistory).not.toHaveBeenCalled();
-    expect(snapshotApiMock.deleteTurnsFrom).toHaveBeenCalledWith('btw_session_2_def', 1);
+    // A side-question session has no persisted Turns, so only the loaded list
+    // is truncated; asking the backend would fail on an unknown session.
+    expect(snapshotApiMock.deleteTurnsFrom).not.toHaveBeenCalled();
     expect(flowChatStoreMock.truncateDialogTurnsFrom).toHaveBeenCalledWith('btw_session_2_def', 1);
     expect(flowChatManagerMock.deleteChatSession).not.toHaveBeenCalled();
   });
