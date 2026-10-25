@@ -87,8 +87,8 @@ Web UI、mobile、CLI、Desktop、Installer、打包及 focused test 命令由�
 ### Git 工作流
 
 - 每个 bug 修复和功能优化都要在 Git 中留痕，不要把改动留在工作区未提交。
-- 所有工作都在专门的 `dev` 分支上进行，绝不直接提交到 `main`；改动验证通过后把
-  `dev` 合并回 `main`。
+- 所有优化工作都在专门的 `dev-0217` 分支上进行（跟踪 `origin/dev-0217`）；绝不直接
+  提交到 `main`，`main` 只作为 0.2.17 冻结基线保留，不作为合并目标。
 - 远程命名：`upstream` = `GCWing/BitFun`，该仓库已改名为 `GCWing/OpenBitFun` 并重写为
   1.0.0 线，与本地这份 0.2.x 检出在数据上不兼容；`origin` = 个人 fork
   `HIT-Owen/BitFun`，仍处于 0.2.x 线，是本次工作的真实基线。

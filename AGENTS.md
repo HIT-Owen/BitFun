@@ -105,8 +105,9 @@ commands, use the nearest local guide. The full script registry remains in
 
 - Track every bug fix and feature optimization in Git. Do not leave code changes
   uncommitted in the working tree.
-- Do all work on a dedicated `dev` branch. Never commit directly to `main`.
-  After a change is verified working, merge `dev` back into `main`.
+- All optimization work happens on the dedicated `dev-0217` branch, which tracks
+  `origin/dev-0217`. Never commit directly to `main`; `main` stays a frozen
+  0.2.17 baseline and is not a merge target.
 - Remotes: `upstream` = `GCWing/BitFun`, renamed to `GCWing/OpenBitFun` and
   rewritten as the 1.0.0 line, which is not data-compatible with this 0.2.x
   checkout. `origin` = the personal fork `HIT-Owen/BitFun`, which stays on the
